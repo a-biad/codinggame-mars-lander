@@ -1,0 +1,5 @@
+b MarsLanderGeneticAlgorithm::populationSimulateAndSort
+b MarsLanderGeneticAlgorithm::populationCrossover
+b MarsLanderGeneticAlgorithm::populationMutation
+
+process launch  -i input/input1.txt

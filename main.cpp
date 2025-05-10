@@ -50,18 +50,19 @@ struct InitialData
 
 class MarsLanderGeneticAlgorithm
 {
-  static const int NUM_ALLELES{ 5 };
-  static const int NUM_PHENOTYPES{ 200 };
+  static const int NUM_ALLELES{ 20 };
+  static const int NUM_PHENOTYPES{ 100 };
+  static const int NUM_SELECT{ 50 };
+  static const size_t NUM_ELITE{ 10 };
   static const int SEED{ 4321 };
-  static constexpr float ELITISM_RATE{ 0.5f };
-  static const size_t ELITISM_NUMBER{ (size_t)(NUM_PHENOTYPES * ELITISM_RATE) };
+  // static constexpr float ELITISM_RATE{ 0.2f };
   static const size_t MAX_EPOCH{ 1000 };
 
   struct Allele
   {
     int d_t;
-    int d_thrust;
-    int d_angle;
+    int thrust;
+    int angle;
   };
 
   struct Result
@@ -100,6 +101,7 @@ class MarsLanderGeneticAlgorithm
 
   struct Phenotype
   {
+    int parentNum0, parentNum1;
     vector<Allele> alleles{ NUM_ALLELES };
     Result result;
   };
@@ -120,10 +122,11 @@ public:
     population.push_back(vector<Phenotype>(NUM_PHENOTYPES));
     for(auto& p : population[0]) {
       for(auto& a : p.alleles) {
-        a.d_t = rand() % 60;
-        a.d_thrust = (rand() % 9) - 4;
-        a.d_angle = (rand() % 181) - 90;
+        a.d_t = rand() % 10;
+        a.thrust = rand() % 5;
+        a.angle = (rand() % 181) - 90;
       }
+      p.alleles[0].d_t = 0;
     }
   }
 
@@ -133,28 +136,26 @@ public:
     populationInitialize();
     populationSimulateAndSort(population[0]);
     highscores.push_back(population[0][0]);
-    int gen{ 1 };
-
-    bool firstLoop{ true };
-
+    int gen{ 0 };
     while(population.size() < MAX_EPOCH) {
       gen++;
       population.push_back(vector<Phenotype>(NUM_PHENOTYPES));
       auto& prevPopulation{ *(population.end() - 2) };
       auto& currPopulation{ *(population.end() - 1) };
       // Elitist choice
-      if(firstLoop) {
-        cerr << "NUM_PHENOTYPES: " << NUM_PHENOTYPES << endl;
-        cerr << "ELITISM_NUMBER: " << ELITISM_NUMBER << endl;
-      }
       std::copy(prevPopulation.begin(),
-                prevPopulation.begin() + ELITISM_NUMBER,
+                prevPopulation.begin() + NUM_ELITE,
                 currPopulation.begin());
-      populationCrossover(currPopulation.begin(),
-                          currPopulation.begin() + ELITISM_NUMBER,
-                          currPopulation.begin() + ELITISM_NUMBER,
-                          currPopulation.end());
-      populationMutation(currPopulation.begin() + ELITISM_NUMBER, currPopulation.end());
+      for(auto it{ currPopulation.begin() }; it != currPopulation.begin() + NUM_ELITE;
+          it++) {
+        it->result.trajectory.clear();
+      }
+      populationCrossover(prevPopulation.begin(),
+                          prevPopulation.begin() + NUM_SELECT,
+                          currPopulation.begin() + NUM_ELITE,
+                          currPopulation.end(),
+                          NORMAL);
+      populationMutation(currPopulation.begin() + NUM_ELITE, currPopulation.end());
       populationSimulateAndSort(currPopulation);
       if(currPopulation[0].result.score > (highscores.end() - 1)->result.score) {
         highscores.push_back(currPopulation[0]);
@@ -164,7 +165,6 @@ public:
           break;
         }
       }
-      firstLoop = false;
     }
     if(population.size() == MAX_EPOCH) {
       cerr << "Ending: Max epoch reached" << endl;
@@ -211,27 +211,42 @@ public:
                            vector<Phenotype>::const_iterator fromEnd,
                            vector<Phenotype>::iterator destBegin,
                            vector<Phenotype>::iterator destEnd,
-                           StrategyCrossover strategy = NORMAL)
+                           StrategyCrossover strategy = NORMAL,
+                           bool verbose = false)
   {
     for(auto p{ destBegin }; p != destEnd; p++) {
-      auto& parent1{ tournament_selection(
-        fromBegin, fromEnd, min(2, (int)(fromEnd - fromBegin))) };
-      auto& parent2{ tournament_selection(
-        fromBegin, fromEnd, min(2, (int)(fromEnd - fromBegin))) };
+      const Phenotype *parent1{ nullptr }, *parent2{ nullptr };
 
-      if(strategy == NORMAL) {
-        const size_t split_point(rand() % (NUM_ALLELES + 1));
+      do {
+        parent1
+          = &tournament_selection(fromBegin, fromEnd, min(2, (int)(fromEnd - fromBegin)));
+        parent2
+          = &tournament_selection(fromBegin, fromEnd, min(2, (int)(fromEnd - fromBegin)));
+      } while(parent1 == parent2);
+
+      // if(strategy == NORMAL) {
+      if(true) {
+        const size_t split_point(rand() % (NUM_ALLELES - 1) + 1);
+
+        p->parentNum0 = parent1 - &(*fromBegin);
+        p->parentNum1 = parent2 - &(*fromBegin);
+
+        if(verbose) {
+          cerr << "Crossover between parent " << p->parentNum0 << " and " << p->parentNum1
+               << " at point " << split_point << endl;
+        }
 
         for(size_t it{ 0 }; it != split_point; it++) {
-          p->alleles[it] = parent1.alleles[it];
+          p->alleles[it] = parent1->alleles[it];
         }
         for(size_t it{ split_point }; it != NUM_ALLELES; it++) {
-          p->alleles[it] = parent2.alleles[it];
+          p->alleles[it] = parent2->alleles[it];
         }
       }
       else if(strategy == UNIFORM) {
         for(size_t it{ 0 }; it != NUM_ALLELES; it++) {
-          p->alleles[it] = (rand() % 2) == 0 ? parent1.alleles[it] : parent2.alleles[it];
+          p->alleles[it]
+            = (rand() % 2) == 0 ? parent1->alleles[it] : parent2->alleles[it];
         }
       }
     }
@@ -241,36 +256,26 @@ public:
   populationMutation(vector<Phenotype>::iterator beg, vector<Phenotype>::iterator end)
   {
     for(auto p{ beg }; p != end; p++) {
-      size_t targetAllele(rand() % NUM_ALLELES);
-      int& d_t{ p->alleles[targetAllele].d_t };
-      int& d_angle{ p->alleles[targetAllele].d_angle };
-      int& d_thrust{ p->alleles[targetAllele].d_thrust };
+      size_t targetAllele;
+      int targetValue;
 
-      int targetValue(rand() % 3);
+      do {
+        targetAllele = rand() % NUM_ALLELES;
+        targetValue = rand() % 3;
+      } while(targetAllele == 0 && targetValue == 0); // allele[0].d_t remains identical
+
+      int& d_t{ p->alleles[targetAllele].d_t };
+      int& angle{ p->alleles[targetAllele].angle };
+      int& thrust{ p->alleles[targetAllele].thrust };
+
       switch(targetValue) {
       case 0:
-        d_t += rand() % 7 - 3;
-        if(d_t < 0)
-          d_t *= -1;
+        d_t = rand() % 20;
+        // if(d_t < 0)
+        //   d_t *= -1;
         break;
-      case 1:
-        d_angle += rand() % 11 - 5;
-        if(d_angle < -180) {
-          d_angle -= 2 * (d_angle + 180);
-        }
-        else if(d_angle > 180) {
-          d_angle -= 2 * (d_angle - 180);
-        }
-        break;
-      case 2:
-        d_thrust += rand() % 3 - 1;
-        if(d_thrust < -4) {
-          d_thrust -= 2 * (d_thrust + 4);
-        }
-        else if(d_thrust > 4) {
-          d_thrust -= 2 * (d_thrust - 4);
-        }
-        break;
+      case 1: angle = rand() % 181 - 90; break;
+      case 2: thrust = rand() % 5; break;
       }
     }
   }
@@ -281,9 +286,9 @@ public:
     P position{ initialData.position };
     P velocity{ 0, 0 };
     int fuel{ initialData.fuel };
-    int target_thrust{ pheno.alleles[0].d_thrust };
+    int target_thrust{ pheno.alleles[0].thrust };
     int thrust{ 0 };
-    int target_rotate{ pheno.alleles[0].d_angle };
+    int target_rotate{ pheno.alleles[0].angle };
     int rotate{ 0 };
     const auto step{ pheno.alleles.begin() + 1 };
     const auto stepend{ pheno.alleles.end() };
@@ -299,8 +304,8 @@ public:
       t++;
       if(step != stepend && t - tPreviousStep >= step->d_t) {
         tPreviousStep = t;
-        target_thrust += step->d_thrust;
-        target_rotate += step->d_angle;
+        target_thrust = step->thrust;
+        target_rotate = step->angle;
       }
       // Thrust control
       thrust += min(max(-1, target_thrust - thrust), 1);
@@ -313,7 +318,7 @@ public:
       P previousPosistion{ position };
       fuel -= thrust;
       P acceleration = { -thrust * sin(rotate / 180.f * 3.15159265f),
-                         G + thrust * cos(rotate / 180.f / 3.14159265f) };
+                         G + thrust * cos(rotate / 180.f * 3.14159265f) };
       velocity = { velocity.x + acceleration.x, velocity.y + acceleration.y };
       position = { position.x + velocity.x, position.y + velocity.y };
       // Save trajectory
@@ -380,6 +385,8 @@ public:
     const vector<P>& land;
     static constexpr float SCALE{ 1000.f / 7000.f };
 
+    bool showOnlySelectedPheno{ false };
+
     Visualiser(vector<vector<Phenotype>>& population, const vector<P>& land)
         : population(population), land(land)
     {
@@ -400,6 +407,10 @@ public:
 
     void eventCheck()
     {
+      if(IsKeyPressed(KEY_SPACE)) {
+        showOnlySelectedPheno = !showOnlySelectedPheno;
+      }
+
       if(IsKeyPressedRepeat(KEY_LEFT) || IsKeyPressed(KEY_LEFT)) {
         if(gen != 0) {
           gen--;
@@ -438,7 +449,10 @@ public:
         if(p - beg == pheno) {
           drawingColor = PINK;
         }
-        else if(p - beg < ELITISM_NUMBER) {
+        else if(showOnlySelectedPheno) {
+          continue;
+        }
+        else if(p - beg < NUM_ELITE) {
           drawingColor = GREEN;
         }
         else {
@@ -447,8 +461,13 @@ public:
         for(auto& t : p->result.trajectory) {
           int startPosX = t.position.x * SCALE;
           int startPosY = t.position.y * SCALE;
-          int endPosX = startPosX;
-          int endPosY = startPosY - SCALE * 20;
+          // P acceleration = { -thrust * sin(rotate / 180.f * 3.15159265f),
+          //                G + thrust * cos(rotate / 180.f / 3.14159265f) };
+          int endPosX
+            = startPosX
+              + SCALE * 10 * (t.thrust + 1) * sin(t.angle / 180.f * 3.14159265f);
+          int endPosY
+            = startPosY - SCALE * 10 * (t.thrust + 1) * cos(t.angle / 180.f * 3.14159265);
           DrawLine(startPosX, startPosY, endPosX, endPosY, drawingColor);
         }
         auto& finalPosition{ (p->result.trajectory.end() - 1)->position };
@@ -465,6 +484,16 @@ public:
                  30,
                  PINK);
       }
+      DrawText(("Parent 1: " + to_string(population[gen][pheno].parentNum0)).c_str(),
+               150,
+               450,
+               30,
+               PINK);
+      DrawText(("Parent 2: " + to_string(population[gen][pheno].parentNum1)).c_str(),
+               150,
+               500,
+               30,
+               PINK);
       DrawText(("Gen: " + to_string(gen)).c_str(), 30, 400, 30, RED);
 
       EndDrawing();
