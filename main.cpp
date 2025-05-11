@@ -54,6 +54,8 @@ struct InitialData
   int target_y;
   P position;
   int fuel;
+  int power;
+  int rotate;
 };
 
 class MarsLanderGeneticAlgorithm
@@ -370,9 +372,9 @@ public:
     P velocity{ 0, 0 };
     int fuel{ initialData.fuel };
     int target_thrust{ pheno.alleles[0].thrust };
-    int thrust{ 0 };
+    int thrust{ initialData.power };
     int target_rotate{ pheno.alleles[0].angle };
-    int rotate{ 0 };
+    int rotate{ initialData.rotate };
     auto step{ pheno.alleles.begin() + 1 };
     const auto stepend{ pheno.alleles.end() };
     int tPreviousStep{ 0 };
@@ -637,8 +639,11 @@ public:
   {
     po::options_description desc("OPTIONS");
     desc.add_options()("help", "Put help message in output stream and exit")(
-      "visualize", po::value(&opt.visualize_), "Open the UI to view the details");
+      "visualize", "Open the UI to view the details");
     po::variables_map argmap;
+    po::store(po::command_line_parser(argc, argv).options(desc).run(), argmap);
+    po::notify(argmap);
+
     if(argmap.count("help")) {
       opt.help_ = true;
       cout << desc << "\n";
@@ -698,6 +703,8 @@ int main(int argc, char* argv[])
       firstLoop = false;
       init.position = { (float)x, (float)y };
       init.fuel = fuel;
+      init.power = power;
+      init.rotate = rotate;
 
       algo = new MarsLanderGeneticAlgorithm(init);
       algo->execute(cmdArgs.getVisualize());
