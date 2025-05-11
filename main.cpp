@@ -4,6 +4,14 @@
 #include <string>
 #include <vector>
 
+#include <boost/program_options.hpp>
+#include <boost/program_options/detail/parsers.hpp>
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/parsers.hpp>
+#include <boost/program_options/positional_options.hpp>
+#include <boost/program_options/value_semantic.hpp>
+#include <boost/program_options/variables_map.hpp>
+
 #include <raylib.h>
 
 using namespace std;
@@ -56,7 +64,7 @@ class MarsLanderGeneticAlgorithm
   static const size_t NUM_ELITE{ 10 };
   static const int SEED{ 4321 };
   // static constexpr float ELITISM_RATE{ 0.2f };
-  static const size_t MAX_EPOCH{ 1000 };
+  static const size_t MAX_EPOCH{ 10000 };
 
   struct Allele
   {
@@ -67,7 +75,6 @@ class MarsLanderGeneticAlgorithm
 
   struct Result
   {
-    float score{ 0.f };
     struct ScoreDetails
     {
       float distX;
@@ -75,20 +82,22 @@ class MarsLanderGeneticAlgorithm
       float landingSpeedX;
       float landingSpeedY;
       float landingRotation;
-      float fuel;
+      float duration;
     } scoreDetails;
 
     string scoreString()
     {
-      return "Score: " + to_string(score)                              //
-             + " x: " + to_string(int(scoreDetails.distX))             //
-             + " y: " + to_string(int(scoreDetails.distY))             //
-             + " spdX: " + to_string(int(scoreDetails.landingSpeedX))  //
-             + " spdY: " + to_string(int(scoreDetails.landingSpeedY))  //
-             + " rot: " + to_string(int(scoreDetails.landingRotation)) //
-             + " fuel: " + to_string(int(scoreDetails.fuel))           //
+      return "Score: " + to_string(score)                                //
+             + " x: " + to_string(int(scoreDetails.distX))               //
+             + " y: " + to_string(int(scoreDetails.distY))               //
+             + " spdX: " + to_string(int(scoreDetails.landingSpeedX))    //
+             + " spdY: " + to_string(int(scoreDetails.landingSpeedY))    //
+             + " rot: " + to_string(int(scoreDetails.landingRotation))   //
+             + " time: " + to_string(int(scoreDetails.duration * 100.f)) //
         ;
     }
+
+    float score{ 0.f };
     bool hasLanded{ false };
     struct TrajectoryElem
     {
@@ -104,6 +113,24 @@ class MarsLanderGeneticAlgorithm
     int parentNum0, parentNum1;
     vector<Allele> alleles{ NUM_ALLELES };
     Result result;
+
+    string alleleToString()
+    {
+      string ret;
+      for(auto& a : alleles) {
+        ret += to_string(a.d_t) + ",";
+      }
+      ret += "\n";
+      for(auto& a : alleles) {
+        ret += to_string(a.thrust) + ",";
+      }
+      ret += "\n";
+      for(auto& a : alleles) {
+        ret += to_string(a.angle) + ",";
+      }
+      ret += "\n";
+      return ret;
+    }
   };
 
   vector<vector<Phenotype>> population;
@@ -130,7 +157,21 @@ public:
     }
   }
 
-  void execute()
+  void testFunctions()
+  {
+    populationInitialize();
+    if(population.size() != 1)
+      throw std::runtime_error("populationInitialize: population size != 1");
+    for(auto& p : population[0]) {
+      if(p.alleles[0].d_t != 0) {
+        throw std::runtime_error("populationInitialize: alleles[0].d_t != 0");
+      }
+    }
+
+    populationSimulateAndSort(population[0]);
+  };
+
+  void execute(bool visualize = false)
   {
     cerr << "Starting genetic algorithm" << endl;
     populationInitialize();
@@ -155,13 +196,16 @@ public:
                           currPopulation.begin() + NUM_ELITE,
                           currPopulation.end(),
                           NORMAL);
-      populationMutation(currPopulation.begin() + NUM_ELITE, currPopulation.end());
+      populationMutation(currPopulation.begin() + NUM_ELITE,
+                         currPopulation.end(),
+                         MutationStrategy::UNIFORM);
       populationSimulateAndSort(currPopulation);
       if(currPopulation[0].result.score > (highscores.end() - 1)->result.score) {
         highscores.push_back(currPopulation[0]);
         cerr << "Gen: " << gen << " score: " << currPopulation[0].result.score << endl;
         if(currPopulation[0].result.hasLanded) {
           cerr << "Ending: Landing succesful" << endl;
+          cout << currPopulation[0].alleleToString();
           break;
         }
       }
@@ -170,10 +214,12 @@ public:
       cerr << "Ending: Max epoch reached" << endl;
     }
     auto& currPopulation{ *(population.end() - 1) };
-    cerr << "Gen: " << gen << " score: " << currPopulation[0].result.score << endl;
+    cout << "Gen: " << gen << " score: " << currPopulation[0].result.score << endl;
 
-    Visualiser visualizer(population, initialData.land);
-    visualizer.mainLoop();
+    if(visualize) {
+      Visualiser visualizer(population, initialData.land);
+      visualizer.mainLoop();
+    }
   }
 
   void populationSimulateAndSort(vector<Phenotype>& currentPopulation)
@@ -205,13 +251,14 @@ public:
   enum StrategyCrossover
   {
     UNIFORM,
-    NORMAL
+    NORMAL,
+    MIDPOINT
   };
   void populationCrossover(vector<Phenotype>::const_iterator fromBegin,
                            vector<Phenotype>::const_iterator fromEnd,
                            vector<Phenotype>::iterator destBegin,
                            vector<Phenotype>::iterator destEnd,
-                           StrategyCrossover strategy = NORMAL,
+                           StrategyCrossover strategy = MIDPOINT,
                            bool verbose = false)
   {
     for(auto p{ destBegin }; p != destEnd; p++) {
@@ -224,8 +271,7 @@ public:
           = &tournament_selection(fromBegin, fromEnd, min(2, (int)(fromEnd - fromBegin)));
       } while(parent1 == parent2);
 
-      // if(strategy == NORMAL) {
-      if(true) {
+      if(strategy == NORMAL) {
         const size_t split_point(rand() % (NUM_ALLELES - 1) + 1);
 
         p->parentNum0 = parent1 - &(*fromBegin);
@@ -243,6 +289,15 @@ public:
           p->alleles[it] = parent2->alleles[it];
         }
       }
+      else if(strategy == MIDPOINT) {
+        for(size_t it{ 0 }; it != NUM_ALLELES; it++) {
+          p->alleles[it].d_t = (parent1->alleles[it].d_t + parent2->alleles[it].d_t) / 2;
+          p->alleles[it].thrust
+            = (parent1->alleles[it].thrust + parent2->alleles[it].thrust) / 2;
+          p->alleles[it].angle
+            = (parent1->alleles[it].angle + parent2->alleles[it].angle) / 2;
+        }
+      }
       else if(strategy == UNIFORM) {
         for(size_t it{ 0 }; it != NUM_ALLELES; it++) {
           p->alleles[it]
@@ -252,8 +307,14 @@ public:
     }
   }
 
-  void
-  populationMutation(vector<Phenotype>::iterator beg, vector<Phenotype>::iterator end)
+  enum class MutationStrategy
+  {
+    UNIFORM,
+    DIFFERENTIAL
+  };
+  void populationMutation(vector<Phenotype>::iterator beg,
+                          vector<Phenotype>::iterator end,
+                          MutationStrategy strategy = MutationStrategy::DIFFERENTIAL)
   {
     for(auto p{ beg }; p != end; p++) {
       size_t targetAllele;
@@ -270,12 +331,34 @@ public:
 
       switch(targetValue) {
       case 0:
-        d_t = rand() % 20;
-        // if(d_t < 0)
-        //   d_t *= -1;
-        break;
-      case 1: angle = rand() % 181 - 90; break;
-      case 2: thrust = rand() % 5; break;
+        switch(strategy) {
+        case MutationStrategy::UNIFORM: d_t = rand() % 20; break;
+        case MutationStrategy::DIFFERENTIAL:
+          d_t += rand() % 30;
+          if(d_t < 0)
+            d_t *= -1;
+          break;
+        }
+
+      case 1:
+        switch(strategy) {
+        case MutationStrategy::UNIFORM: angle = rand() % 181 - 90; break;
+        case MutationStrategy::DIFFERENTIAL:
+          angle += rand() % 20;
+          angle -= 2 * min(angle - -180, 0);
+          angle -= 2 * max(angle - 180, 0);
+          break;
+        }
+
+      case 2:
+        switch(strategy) {
+        case MutationStrategy::UNIFORM: thrust = rand() % 5; break;
+        case MutationStrategy::DIFFERENTIAL:
+          thrust += rand() % 3 - 1;
+          thrust -= 2 * min(thrust - 0, 0);
+          thrust -= 2 * max(thrust - 4, 0);
+          break;
+        }
       }
     }
   }
@@ -290,7 +373,7 @@ public:
     int thrust{ 0 };
     int target_rotate{ pheno.alleles[0].angle };
     int rotate{ 0 };
-    const auto step{ pheno.alleles.begin() + 1 };
+    auto step{ pheno.alleles.begin() + 1 };
     const auto stepend{ pheno.alleles.end() };
     int tPreviousStep{ 0 };
 
@@ -306,6 +389,7 @@ public:
         tPreviousStep = t;
         target_thrust = step->thrust;
         target_rotate = step->angle;
+        step++;
       }
       // Thrust control
       thrust += min(max(-1, target_thrust - thrust), 1);
@@ -337,40 +421,37 @@ public:
     }
 
     // Calculate results
-    // if(hasExhaustedFuel) {
-    //   pheno.result.score -= 30; // Wasted fuel
-    // }
-    // if(hasLeftBoundaries) {
-    //   pheno.result.score -= 100; // Wrong direction
-    // }
-    if(hasCollided) {
-      if(position.x >= initialData.target_x1 && position.x <= initialData.target_x2
-         && initialData.target_y - position.y <= 40 && abs(velocity.x) <= 20.f
-         && abs(velocity.y) <= 40.f) {}
+    if(hasExhaustedFuel) {
+      pheno.result.score -= 10000; // Wasted fuel
+    }
+    if(hasLeftBoundaries) {
+      pheno.result.score -= 10000; // Wrong direction
     }
     // bool aboveTarget
     //   = position.x >= initialData.target_x1 && position.x <= initialData.target_x2;
     float penaltyLandingSpeedX = max(abs(velocity.x) - 20.f, 0.f);
     float penaltyLandingSpeedY = max(abs(velocity.y) - 40.f, 0.f);
     float penaltyLandingRotation = abs(rotate);
-    float distYtemp = initialData.target_y - position.y;
-    float distY{ 0.f };
-    if(distYtemp > 5.f || distYtemp < -5.f)
-      distY = abs(distYtemp);
+    float distY = abs(initialData.target_y - position.y);
+    float distYThres{ 0.f };
+    if(distY > 5.f || distY < -5.f)
+      distYThres = abs(distY);
     float distX = max(
       0.f, max(initialData.target_x1 - position.x, position.x - initialData.target_x2));
     auto sigmoid = [](float x) { return x / (1.f + abs(x)); };
     auto& details{ pheno.result.scoreDetails };
-    details.distX = -pow(distX / 100.f, 2);
-    details.distY = -pow(distY / 100.f, 2);
-    details.landingSpeedX = -pow(penaltyLandingSpeedX, 2);
-    details.landingSpeedY = -pow(penaltyLandingSpeedY, 2);
-    details.landingRotation = -pow(penaltyLandingRotation, 2);
-    details.fuel = float(fuel) / float(initialData.fuel);
+    details.distX = -pow(distX, 2);
+    details.distY = -distY;
+    bool reachedLanding{ distX == 0 && distYThres == 0 };
+    details.landingSpeedX = !reachedLanding ? -10000.f : -penaltyLandingSpeedX;
+    details.landingSpeedY = !reachedLanding ? -10000.f : -penaltyLandingSpeedY;
+    details.landingRotation = !reachedLanding ? -10000.f : -penaltyLandingRotation;
+    details.duration = -t / 100.f;
     pheno.result.score = details.distX + details.distY + details.landingSpeedX
-                         + details.landingSpeedY + details.landingRotation + details.fuel;
-    if(distX == 0.f && distY == 0.f && penaltyLandingSpeedX == 0.f
-       && penaltyLandingSpeedY == 0.f && penaltyLandingRotation == 0.f) {
+                         + details.landingSpeedY + details.landingRotation
+                         + details.duration;
+    if(reachedLanding && penaltyLandingSpeedX == 0.f && penaltyLandingSpeedY == 0.f
+       && penaltyLandingRotation == 0.f) {
       pheno.result.hasLanded = true;
     }
     return;
@@ -392,17 +473,18 @@ public:
     {
       gen = 0;
       pheno = 0;
+      SetTraceLogLevel(LOG_WARNING);
       InitWindow(1366.f, 700.f,
                  "Mars lander"); // Initialize window and OpenGL context
     }
 
     void printCurrentGenInfo()
     {
-      cerr << "Gen " << gen << " : ";
+      cout << "Gen " << gen << " : ";
       for(auto& p : population[gen]) {
-        cerr << p.result.score << " ";
+        cout << p.result.score << " ";
       }
-      cerr << endl;
+      cout << "\n";
     }
 
     void eventCheck()
@@ -415,10 +497,16 @@ public:
         if(gen != 0) {
           gen--;
         }
+        else {
+          gen = population.size() - 1;
+        }
       }
       if(IsKeyPressedRepeat(KEY_RIGHT) || IsKeyPressed(KEY_RIGHT)) {
         if(gen != population.size() - 1) {
           gen++;
+        }
+        else {
+          gen = 0;
         }
       }
       if(IsKeyPressedRepeat(KEY_DOWN) || IsKeyPressed(KEY_DOWN)) {
@@ -484,14 +572,29 @@ public:
                  30,
                  PINK);
       }
+      int t{ 0 };
+      for(size_t a{ 0 }; a < NUM_ALLELES; a++) {
+        t += population[gen][pheno].alleles[a].d_t;
+        DrawText(to_string(t).c_str(), 150 + a * 20, 430, 15, PINK);
+        DrawText(to_string(population[gen][pheno].alleles[a].thrust).c_str(),
+                 150 + a * 20,
+                 450,
+                 15,
+                 PINK);
+        DrawText(to_string(population[gen][pheno].alleles[a].angle).c_str(),
+                 150 + a * 20,
+                 470,
+                 15,
+                 PINK);
+      }
       DrawText(("Parent 1: " + to_string(population[gen][pheno].parentNum0)).c_str(),
                150,
-               450,
+               500,
                30,
                PINK);
       DrawText(("Parent 2: " + to_string(population[gen][pheno].parentNum1)).c_str(),
                150,
-               500,
+               550,
                30,
                PINK);
       DrawText(("Gen: " + to_string(gen)).c_str(), 30, 400, 30, RED);
@@ -515,8 +618,48 @@ public:
   };
 };
 
-int main()
+namespace po = boost::program_options;
+
+class CmdArgs
 {
+  struct Options
+  {
+    bool help_{ false };
+    bool visualize_{ false };
+  } opt;
+
+  bool shouldExit_{ false };
+
+public:
+  CmdArgs(int argc, char** argv) { parseOptions(argc, argv); }
+
+  void parseOptions(int argc, char** argv)
+  {
+    po::options_description desc("OPTIONS");
+    desc.add_options()("help", "Put help message in output stream and exit")(
+      "visualize", po::value(&opt.visualize_), "Open the UI to view the details");
+    po::variables_map argmap;
+    if(argmap.count("help")) {
+      opt.help_ = true;
+      cout << desc << "\n";
+      shouldExit_ = true;
+    }
+    if(argmap.count("visualize")) {
+      opt.visualize_ = true;
+    }
+  }
+
+  auto getVisualize() { return opt.visualize_; }
+  auto isHelpEnabled() { return opt.help_; }
+  bool shouldExit() { return shouldExit_; }
+};
+
+int main(int argc, char* argv[])
+{
+  CmdArgs cmdArgs(argc, argv);
+  if(cmdArgs.shouldExit() == true)
+    return 0;
+
   InitialData init;
 
   int surface_n; // the number of points used to draw the surface of Mars.
@@ -557,7 +700,7 @@ int main()
       init.fuel = fuel;
 
       algo = new MarsLanderGeneticAlgorithm(init);
-      algo->execute();
+      algo->execute(cmdArgs.getVisualize());
       delete algo;
 
       break;
