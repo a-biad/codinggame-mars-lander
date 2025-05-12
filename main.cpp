@@ -63,14 +63,14 @@ class MarsLanderGeneticAlgorithm
   static const int NUM_ALLELES{ 20 };
   static const int NUM_PHENOTYPES{ 100 };
   static const int NUM_SELECT{ 50 };
-  static const size_t NUM_ELITE{ 10 };
+  static const size_t NUM_ELITE{ 5 };
   static const int SEED{ 4321 };
   // static constexpr float ELITISM_RATE{ 0.2f };
   static const size_t MAX_EPOCH{ 10000 };
 
   struct ShipControl
   {
-    int d_t;
+    int t;
     int thrust;
     int angle;
   };
@@ -113,7 +113,8 @@ class MarsLanderGeneticAlgorithm
   struct Chromosome
   {
     vector<ShipControl> sc{ NUM_ALLELES };
-    vector<ShipControl>::iterator lastCommand;
+    size_t endSc;
+    auto lastCommand() { return sc.begin() + endSc; }
   };
 
   struct Phenotype
@@ -125,15 +126,17 @@ class MarsLanderGeneticAlgorithm
     string chromosomeToString()
     {
       string ret;
-      for(auto sc{ chr.sc.begin() }; sc != chr.lastCommand; sc++) {
-        ret += to_string(sc->d_t) + ",";
+      ret += chr.endSc;
+      ret += "\n";
+      for(auto sc{ chr.sc.begin() }; sc != chr.sc.end(); sc++) {
+        ret += to_string(sc->t) + ",";
       }
       ret += "\n";
-      for(auto sc{ chr.sc.begin() }; sc != chr.lastCommand; sc++) {
+      for(auto sc{ chr.sc.begin() }; sc != chr.sc.end(); sc++) {
         ret += to_string(sc->thrust) + ",";
       }
       ret += "\n";
-      for(auto sc{ chr.sc.begin() }; sc != chr.lastCommand; sc++) {
+      for(auto sc{ chr.sc.begin() }; sc != chr.sc.end(); sc++) {
         ret += to_string(sc->angle) + ",";
       }
       ret += "\n";
@@ -156,13 +159,15 @@ public:
     population.clear();
     population.push_back(vector<Phenotype>(NUM_PHENOTYPES));
     for(auto& p : population[0]) {
+      int tPrev{ 0 };
       for(auto& a : p.chr.sc) {
-        a.d_t = rand() % 10;
+        a.t = tPrev + rand() % 10;
+        tPrev = { a.t };
         a.thrust = rand() % 5;
         a.angle = (rand() % 181) - 90;
       }
-      p.chr.sc[0].d_t = 0;
-      p.chr.lastCommand = p.chr.sc.end();
+      p.chr.sc[0].t = 0;
+      p.chr.endSc = NUM_ALLELES;
     }
   }
 
@@ -204,7 +209,7 @@ public:
                           prevPopulation.begin() + NUM_SELECT,
                           currPopulation.begin() + NUM_ELITE,
                           currPopulation.end(),
-                          MERGE);
+                          CrossoverStrategy::NORMAL);
       populationMutation(currPopulation.begin() + NUM_ELITE,
                          currPopulation.end(),
                          MutationStrategy::UNIFORM);
@@ -257,7 +262,7 @@ public:
     return *best;
   }
 
-  enum StrategyCrossover
+  enum class CrossoverStrategy
   {
     UNIFORM,
     NORMAL,
@@ -268,7 +273,7 @@ public:
                            vector<Phenotype>::const_iterator fromEnd,
                            vector<Phenotype>::iterator destBegin,
                            vector<Phenotype>::iterator destEnd,
-                           StrategyCrossover strategy = MIDPOINT,
+                           CrossoverStrategy strategy,
                            bool verbose = false)
   {
     for(auto p{ destBegin }; p != destEnd; p++) {
@@ -281,6 +286,10 @@ public:
           = &tournament_selection(fromBegin, fromEnd, min(2, (int)(fromEnd - fromBegin)));
       } while(parent1 == parent2);
 
+      if(parent2->chr.endSc < parent1->chr.endSc) {
+        swap(parent1, parent2);
+      }
+
       p->parentNum0 = parent1 - &(*fromBegin);
       p->parentNum1 = parent2 - &(*fromBegin);
 
@@ -289,34 +298,26 @@ public:
              << "\n";
       }
 
-      if(strategy == MERGE) {
+      if(strategy == CrossoverStrategy::MERGE) {
         auto sc1{ parent1->chr.sc.begin() };
         auto sc1end{ parent1->chr.sc.end() };
         auto sc2{ parent2->chr.sc.begin() };
         auto sc2end{ parent2->chr.sc.end() };
-        int nextT1{ sc1->d_t };
-        int nextT2{ sc2->d_t };
         auto sc{ p->chr.sc.begin() };
 
         while(sc1 != sc1end && sc2 != sc2end && sc != p->chr.sc.end()) {
-          if(nextT1 == nextT2) { // Two commands at the same time: pick the mean
-            sc->d_t = nextT1;
+          if(sc1->t == sc2->t) { // Two commands at the same time: pick the mean
+            sc->t = sc1->t;
             sc->thrust = (sc1->thrust + sc2->thrust) / 2;
             sc->angle = (sc1->angle + sc2->angle) / 2;
-            nextT1 = (++sc1) != sc1end ? sc1->d_t : -1;
-            nextT2 = (++sc2) != sc2end ? sc2->d_t : -1;
+            sc1++;
+            sc2++;
           }
-          else if(nextT1 < nextT2) { // What's the next ship command that would be called?
-            nextT2 -= nextT1;
-            *sc = *sc1;
-            sc->d_t = nextT1;
-            nextT1 = (++sc1) != sc1end ? sc1->d_t : -1;
+          else if(sc1->t < sc2->t) {
+            *sc = *(sc1++);
           }
           else {
-            nextT1 -= nextT2;
-            *sc = *sc2;
-            sc->d_t = nextT2;
-            nextT2 = (++sc2) != sc2end ? sc2->d_t : -1;
+            *sc = *(sc2++);
           }
           sc++;
         }
@@ -333,26 +334,28 @@ public:
           throw std::runtime_error("Fatal error: Merge crossover unsuccesful");
         }
       }
-      if(strategy == NORMAL) {
-        const size_t split_point(rand() % (NUM_ALLELES - 1) + 1);
+      if(strategy == CrossoverStrategy::NORMAL) {
+        size_t splitPointMax{ parent1->chr.endSc - 1 };
+        const size_t splitPoint(rand() % (splitPointMax + 1));
 
-        for(size_t it{ 0 }; it != split_point; it++) {
+        for(size_t it{ 0 }; it != splitPoint; it++) {
           p->chr.sc[it] = parent1->chr.sc[it];
         }
-        for(size_t it{ split_point }; it != NUM_ALLELES; it++) {
+        for(size_t it{ splitPoint }; it != NUM_ALLELES; it++) {
           p->chr.sc[it] = parent2->chr.sc[it];
         }
+        p->chr.endSc = parent2->chr.endSc;
       }
-      else if(strategy == MIDPOINT) {
+      else if(strategy == CrossoverStrategy::MIDPOINT) {
         for(size_t it{ 0 }; it != NUM_ALLELES; it++) {
-          p->chr.sc[it].d_t = (parent1->chr.sc[it].d_t + parent2->chr.sc[it].d_t) / 2;
+          p->chr.sc[it].t = (parent1->chr.sc[it].t + parent2->chr.sc[it].t) / 2;
           p->chr.sc[it].thrust
             = (parent1->chr.sc[it].thrust + parent2->chr.sc[it].thrust) / 2;
           p->chr.sc[it].angle
             = (parent1->chr.sc[it].angle + parent2->chr.sc[it].angle) / 2;
         }
       }
-      else if(strategy == UNIFORM) {
+      else if(strategy == CrossoverStrategy::UNIFORM) {
         for(size_t it{ 0 }; it != NUM_ALLELES; it++) {
           p->chr.sc[it] = (rand() % 2) == 0 ? parent1->chr.sc[it] : parent2->chr.sc[it];
         }
@@ -374,22 +377,22 @@ public:
       int targetValue;
 
       do {
-        targetAllele = rand() % NUM_ALLELES;
+        targetAllele = rand() % p->chr.endSc;
         targetValue = rand() % 3;
-      } while(targetAllele == 0 && targetValue == 0); // allele[0].d_t remains identical
+      } while(targetAllele == 0 && targetValue == 0); // allele[0].t remains identical
 
-      int& d_t{ p->chr.sc[targetAllele].d_t };
+      int tPrev{ targetAllele == 0 ? 0 : p->chr.sc[targetAllele - 1].t };
+      int& t{ p->chr.sc[targetAllele].t };
       int& angle{ p->chr.sc[targetAllele].angle };
       int& thrust{ p->chr.sc[targetAllele].thrust };
 
       switch(targetValue) {
       case 0:
         switch(strategy) {
-        case MutationStrategy::UNIFORM: d_t = rand() % 20; break;
+        case MutationStrategy::UNIFORM: t = tPrev + rand() % 20; break;
         case MutationStrategy::DIFFERENTIAL:
-          d_t += rand() % 30;
-          if(d_t < 0)
-            d_t *= -1;
+          t += rand() % 30;
+          t -= 2 * min(t - tPrev, 0);
           break;
         }
 
@@ -428,7 +431,6 @@ public:
     int rotate{ initialData.rotate };
     auto step{ pheno.chr.sc.begin() + 1 };
     const auto stepend{ pheno.chr.sc.end() };
-    int tPreviousStep{ 0 };
 
     // Stop conditions
     bool hasCollided{ false };
@@ -438,8 +440,7 @@ public:
     while(!(hasCollided || hasLeftBoundaries || hasExhaustedFuel)) {
       // Apply changes from phenotype
       t++;
-      if(step != stepend && t - tPreviousStep >= step->d_t) {
-        tPreviousStep = t;
+      if(step != stepend && t >= step->t) {
         target_thrust = step->thrust;
         target_rotate = step->angle;
         step++;
@@ -473,6 +474,7 @@ public:
       }
     }
 
+    pheno.chr.endSc = step - pheno.chr.sc.begin();
     // Calculate results
     if(hasExhaustedFuel) {
       pheno.result.score -= 10000; // Wasted fuel
@@ -627,18 +629,10 @@ public:
       }
       int t{ 0 };
       for(size_t a{ 0 }; a < NUM_ALLELES; a++) {
-        t += population[gen][pheno].chr.sc[a].d_t;
-        DrawText(to_string(t).c_str(), 150 + a * 20, 430, 15, PINK);
-        DrawText(to_string(population[gen][pheno].chr.sc[a].thrust).c_str(),
-                 150 + a * 20,
-                 450,
-                 15,
-                 PINK);
-        DrawText(to_string(population[gen][pheno].chr.sc[a].angle).c_str(),
-                 150 + a * 20,
-                 470,
-                 15,
-                 PINK);
+        auto& sc{ population[gen][pheno].chr.sc[a] };
+        DrawText(to_string(sc.t).c_str(), 150 + a * 20, 430, 15, PINK);
+        DrawText(to_string(sc.thrust).c_str(), 150 + a * 20, 450, 15, PINK);
+        DrawText(to_string(sc.angle).c_str(), 150 + a * 20, 470, 15, PINK);
       }
       DrawText(("Parent 1: " + to_string(population[gen][pheno].parentNum0)).c_str(),
                150,
