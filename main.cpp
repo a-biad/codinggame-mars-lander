@@ -34,16 +34,18 @@ int ccw(const P& a, const P& b, const P& c)
  * Check if a collision occured
  * p1: Position before a single turn
  * p2: Position after a single turn
+ * return: Pointer to the "left" point of the land that was collided with, or nullptr if
+ * no collision
  */
-bool collision(P p1, P p2, const vector<P>& land)
+const P* collision(P p1, P p2, const vector<P>& land)
 {
   for(size_t i{ 1 }; i < land.size(); i++) {
     const P& l1{ land[i - 1] };
     const P& l2{ land[i] };
     if(ccw(p1, l1, l2) != ccw(p2, l1, l2) && ccw(p1, p2, l1) != ccw(p1, p2, l2))
-      return true;
+      return &l1;
   }
-  return false;
+  return nullptr;
 }
 
 struct InitialData
@@ -60,18 +62,17 @@ struct InitialData
 
 class MarsLanderGeneticAlgorithm
 {
-  static const int NUM_ALLELES{ 20 };
-  static const int NUM_PHENOTYPES{ 20 };
-  static const int NUM_SELECT{ 10 };
-  static const size_t NUM_ELITE{ 2 };
-  static constexpr float MUTATION_P{ 0.1f };
+  static const int NUM_ALLELES{ 200 };
+  static const int NUM_PHENOTYPES{ 1000 };
+  static const int NUM_SELECT{ 200 };
+  static const size_t NUM_ELITE{ 50 };
+  static constexpr float MUTATION_P{ 1.f };
   static const int SEED{ 4321 };
   // static constexpr float ELITISM_RATE{ 0.2f };
-  static const size_t MAX_EPOCH{ 100000 };
+  static const size_t MAX_EPOCH{ 1000 };
 
   struct ShipControl
   {
-    int t;
     int thrust;
     int angle;
   };
@@ -130,10 +131,6 @@ class MarsLanderGeneticAlgorithm
       ret += chr.endSc;
       ret += "\n";
       for(auto sc{ chr.sc.begin() }; sc != chr.sc.end(); sc++) {
-        ret += to_string(sc->t) + ",";
-      }
-      ret += "\n";
-      for(auto sc{ chr.sc.begin() }; sc != chr.sc.end(); sc++) {
         ret += to_string(sc->thrust) + ",";
       }
       ret += "\n";
@@ -160,14 +157,10 @@ public:
     population.clear();
     population.push_back(vector<Phenotype>(NUM_PHENOTYPES));
     for(auto& p : population[0]) {
-      int tPrev{ 0 };
       for(auto& a : p.chr.sc) {
-        a.t = tPrev + rand() % 10;
-        tPrev = { a.t };
         a.thrust = rand() % 5;
         a.angle = (rand() % 181) - 90;
       }
-      p.chr.sc[0].t = 0;
       p.chr.endSc = NUM_ALLELES;
     }
   }
@@ -210,7 +203,7 @@ public:
                           prevPopulation.begin() + NUM_SELECT,
                           currPopulation.begin() + NUM_ELITE,
                           currPopulation.end(),
-                          CrossoverStrategy::NORMAL);
+                          CrossoverStrategy::MIDPOINT);
       populationMutation(currPopulation.begin() + NUM_ELITE,
                          currPopulation.end(),
                          MutationStrategy::UNIFORM);
@@ -267,8 +260,7 @@ public:
   {
     UNIFORM,
     NORMAL,
-    MIDPOINT,
-    MERGE
+    MIDPOINT
   };
   void populationCrossover(vector<Phenotype>::const_iterator fromBegin,
                            vector<Phenotype>::const_iterator fromEnd,
@@ -299,44 +291,8 @@ public:
              << "\n";
       }
 
-      if(strategy == CrossoverStrategy::MERGE) {
-        auto sc1{ parent1->chr.sc.begin() };
-        auto sc1end{ parent1->chr.sc.end() };
-        auto sc2{ parent2->chr.sc.begin() };
-        auto sc2end{ parent2->chr.sc.end() };
-        auto sc{ p->chr.sc.begin() };
-
-        while(sc1 != sc1end && sc2 != sc2end && sc != p->chr.sc.end()) {
-          if(sc1->t == sc2->t) { // Two commands at the same time: pick the mean
-            sc->t = sc1->t;
-            sc->thrust = (sc1->thrust + sc2->thrust) / 2;
-            sc->angle = (sc1->angle + sc2->angle) / 2;
-            sc1++;
-            sc2++;
-          }
-          else if(sc1->t < sc2->t) {
-            *sc = *(sc1++);
-          }
-          else {
-            *sc = *(sc2++);
-          }
-          sc++;
-        }
-        while(sc1 != sc1end && sc != p->chr.sc.end()) {
-          *(sc++) = *(sc1++);
-        }
-        while(sc2 != sc2end && sc != p->chr.sc.end()) {
-          *(sc++) = *(sc2++);
-        }
-        if(sc != p->chr.sc.end()) {
-          cout << "sc left to fill: " << p->chr.sc.end() - sc << "\n";
-          cout << "sc1 left to iter: " << sc1end - sc1 << "\n";
-          cout << "sc2 left to iter: " << sc2end - sc2 << "\n";
-          throw std::runtime_error("Fatal error: Merge crossover unsuccesful");
-        }
-      }
       if(strategy == CrossoverStrategy::NORMAL) {
-        size_t splitPointMax{ parent1->chr.endSc - 1 };
+        size_t splitPointMax{ parent2->chr.endSc - 1 };
         const size_t splitPoint(rand() % (splitPointMax + 1));
 
         for(size_t it{ 0 }; it != splitPoint; it++) {
@@ -349,7 +305,6 @@ public:
       }
       else if(strategy == CrossoverStrategy::MIDPOINT) {
         for(size_t it{ 0 }; it != NUM_ALLELES; it++) {
-          p->chr.sc[it].t = (parent1->chr.sc[it].t + parent2->chr.sc[it].t) / 2;
           p->chr.sc[it].thrust
             = (parent1->chr.sc[it].thrust + parent2->chr.sc[it].thrust) / 2;
           p->chr.sc[it].angle
@@ -362,8 +317,6 @@ public:
           p->chr.sc[it] = (rand() % 2) == 0 ? parent1->chr.sc[it] : parent2->chr.sc[it];
         }
         p->chr.endSc = max(parent1->chr.endSc, parent2->chr.endSc);
-        sort(
-          p->chr.sc.begin(), p->chr.sc.end(), [](auto& a, auto& b) { return a.t < b.t; });
       }
     }
   }
@@ -371,7 +324,7 @@ public:
   enum class MutationStrategy
   {
     UNIFORM,
-    DIFFERENTIAL
+    DIFFERENTIAL,
   };
   void populationMutation(vector<Phenotype>::iterator beg,
                           vector<Phenotype>::iterator end,
@@ -386,28 +339,14 @@ public:
 
       size_t targetAllele;
       int targetValue;
+      targetAllele = rand() % p->chr.endSc;
+      targetValue = rand() % 2;
 
-      do {
-        targetAllele = rand() % p->chr.endSc;
-        targetValue = rand() % 3;
-      } while(targetAllele == 0 && targetValue == 0); // allele[0].t remains identical
-
-      int tPrev{ targetAllele == 0 ? 0 : p->chr.sc[targetAllele - 1].t };
-      int& t{ p->chr.sc[targetAllele].t };
       int& angle{ p->chr.sc[targetAllele].angle };
       int& thrust{ p->chr.sc[targetAllele].thrust };
 
       switch(targetValue) {
       case 0:
-        switch(strategy) {
-        case MutationStrategy::UNIFORM: t = tPrev + rand() % 20; break;
-        case MutationStrategy::DIFFERENTIAL:
-          t += rand() % 30;
-          t -= 2 * min(t - tPrev, 0);
-          break;
-        }
-
-      case 1:
         switch(strategy) {
         case MutationStrategy::UNIFORM: angle = rand() % 181 - 90; break;
         case MutationStrategy::DIFFERENTIAL:
@@ -417,7 +356,7 @@ public:
           break;
         }
 
-      case 2:
+      case 1:
         switch(strategy) {
         case MutationStrategy::UNIFORM: thrust = rand() % 5; break;
         case MutationStrategy::DIFFERENTIAL:
@@ -446,13 +385,14 @@ public:
 
     // Stop conditions
     bool hasCollided{ false };
+    const P* collisionP{ nullptr };
     bool hasLeftBoundaries{ false };
     bool hasExhaustedFuel{ false };
 
     while(!(hasCollided || hasLeftBoundaries || hasExhaustedFuel)) {
       // Apply changes from phenotype
       t++;
-      if(step != stepend && t >= step->t) {
+      if(step != stepend) {
         target_thrust = step->thrust;
         target_rotate = step->angle;
         step++;
@@ -474,7 +414,8 @@ public:
       // Save trajectory
       pheno.result.trajectory.push_back({ position, rotate, thrust });
       // Check for termination conditions
-      if(collision(previousPosistion, position, initialData.land)) {
+      if((collisionP = collision(previousPosistion, position, initialData.land))
+         != nullptr) {
         hasCollided = true;
       }
       if(position.x < 0 || position.x > BOUNDARIES.x || position.y < 0
@@ -496,20 +437,23 @@ public:
     }
     // bool aboveTarget
     //   = position.x >= initialData.target_x1 && position.x <= initialData.target_x2;
+    bool reachedLanding{ collisionP != nullptr && collisionP->x == initialData.target_x1
+                         && collisionP->y == initialData.target_y };
     float penaltyLandingSpeedX = max(abs(velocity.x) - 20.f, 0.f);
     float penaltyLandingSpeedY = max(abs(velocity.y) - 40.f, 0.f);
     float penaltyLandingRotation = abs(rotate);
     float distY = abs(initialData.target_y - position.y);
-    float distYThres{ 0.f };
-    if(distY > 5.f || distY < -5.f)
-      distYThres = abs(distY);
+    float distYThres{ abs(distY) };
+    if(reachedLanding) {
+      distYThres = 0.f;
+    }
     float distX = max(
       0.f, max(initialData.target_x1 - position.x, position.x - initialData.target_x2));
-    auto sigmoid = [](float x) { return x / (1.f + abs(x)); };
+
+    // auto sigmoid = [](float x) { return x / (1.f + abs(x)); };
     auto& details{ pheno.result.scoreDetails };
     details.distX = -pow(distX, 2);
     details.distY = -distY;
-    bool reachedLanding{ distX == 0 && distYThres == 0 };
     details.landingSpeedX = !reachedLanding ? -10000.f : -penaltyLandingSpeedX;
     details.landingSpeedY = !reachedLanding ? -10000.f : -penaltyLandingSpeedY;
     details.landingRotation = !reachedLanding ? -10000.f : -penaltyLandingRotation;
@@ -558,6 +502,24 @@ public:
     {
       if(IsKeyPressed(KEY_SPACE)) {
         showOnlySelectedPheno = !showOnlySelectedPheno;
+      }
+
+      static const int INCREMENT{ 20 };
+      if(IsKeyPressedRepeat(KEY_PAGE_DOWN) || IsKeyPressed(KEY_PAGE_DOWN)) {
+        if(gen >= INCREMENT) {
+          gen -= INCREMENT;
+        }
+        else {
+          gen = population.size() - 1;
+        }
+      }
+      if(IsKeyPressedRepeat(KEY_PAGE_UP) || IsKeyPressed(KEY_PAGE_UP)) {
+        if(gen <= population.size() - 1 - INCREMENT) {
+          gen += INCREMENT;
+        }
+        else {
+          gen = 0;
+        }
       }
 
       if(IsKeyPressedRepeat(KEY_LEFT) || IsKeyPressed(KEY_LEFT)) {
@@ -642,7 +604,6 @@ public:
       int t{ 0 };
       for(size_t a{ 0 }; a < NUM_ALLELES; a++) {
         auto& sc{ population[gen][pheno].chr.sc[a] };
-        DrawText(to_string(sc.t).c_str(), 150 + a * 20, 430, 15, PINK);
         DrawText(to_string(sc.thrust).c_str(), 150 + a * 20, 450, 15, PINK);
         DrawText(to_string(sc.angle).c_str(), 150 + a * 20, 470, 15, PINK);
       }
