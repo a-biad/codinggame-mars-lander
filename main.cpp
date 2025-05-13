@@ -14,6 +14,8 @@
 
 #include <raylib.h>
 
+#include "utildraw.cpp"
+
 using namespace std;
 
 struct P
@@ -62,14 +64,16 @@ struct InitialData
 
 class MarsLanderGeneticAlgorithm
 {
-  static const int NUM_ALLELES{ 200 };
-  static const int NUM_PHENOTYPES{ 1000 };
-  static const int NUM_SELECT{ 200 };
-  static const size_t NUM_ELITE{ 50 };
-  static constexpr float MUTATION_P{ 1.f };
+  static const int NUM_ALLELES{ 50 };
+  static const int TIME_ALLELE{ 5 };
+  static const int NUM_PHENOTYPES{ 100 };
+  static const int NUM_SELECT{ 50 };
+  static const size_t NUM_ELITE{ 1 };
+  static constexpr float MUTATION_P{ 0.01f };
+  static constexpr int TOURNAMENT_SELECTION_K{ 5 };
   static const int SEED{ 4321 };
   // static constexpr float ELITISM_RATE{ 0.2f };
-  static const size_t MAX_EPOCH{ 1000 };
+  static const size_t MAX_EPOCH{ 10000 };
 
   struct ShipControl
   {
@@ -121,7 +125,7 @@ class MarsLanderGeneticAlgorithm
 
   struct Phenotype
   {
-    int parentNum0, parentNum1;
+    const Phenotype* parent[2]{ nullptr, nullptr };
     Chromosome chr;
     Result result;
 
@@ -203,10 +207,10 @@ public:
                           prevPopulation.begin() + NUM_SELECT,
                           currPopulation.begin() + NUM_ELITE,
                           currPopulation.end(),
-                          CrossoverStrategy::MIDPOINT);
+                          CrossoverStrategy::CONTINUOUS);
       populationMutation(currPopulation.begin() + NUM_ELITE,
                          currPopulation.end(),
-                         MutationStrategy::UNIFORM);
+                         MutationStrategy::FULL_DIFFERENTIAL);
       populationSimulateAndSort(currPopulation);
       if(currPopulation[0].result.score > (highscores.end() - 1)->result.score) {
         highscores.push_back(currPopulation[0]);
@@ -260,7 +264,7 @@ public:
   {
     UNIFORM,
     NORMAL,
-    MIDPOINT
+    CONTINUOUS
   };
   void populationCrossover(vector<Phenotype>::const_iterator fromBegin,
                            vector<Phenotype>::const_iterator fromEnd,
@@ -270,61 +274,58 @@ public:
                            bool verbose = false)
   {
     for(auto p{ destBegin }; p != destEnd; p++) {
-      const Phenotype *parent1{ nullptr }, *parent2{ nullptr };
+      const Phenotype *parent0{ nullptr }, *parent1{ nullptr };
 
       do {
+        parent0
+          = &tournament_selection(fromBegin, fromEnd, min(2, (int)(fromEnd - fromBegin)));
         parent1
           = &tournament_selection(fromBegin, fromEnd, min(2, (int)(fromEnd - fromBegin)));
-        parent2
-          = &tournament_selection(fromBegin, fromEnd, min(2, (int)(fromEnd - fromBegin)));
-      } while(parent1 == parent2);
+      } while(parent0 == parent1);
 
-      if(parent2->chr.endSc < parent1->chr.endSc) {
-        swap(parent1, parent2);
+      if(parent1->chr.endSc < parent0->chr.endSc) {
+        swap(parent0, parent1);
       }
 
-      p->parentNum0 = parent1 - &(*fromBegin);
-      p->parentNum1 = parent2 - &(*fromBegin);
-
-      if(verbose) {
-        cerr << "Crossover between parent " << p->parentNum0 << " and " << p->parentNum1
-             << "\n";
-      }
+      p->parent[0] = parent0;
+      p->parent[1] = parent1;
 
       if(strategy == CrossoverStrategy::NORMAL) {
-        size_t splitPointMax{ parent2->chr.endSc - 1 };
+        size_t splitPointMax{ parent1->chr.endSc - 1 };
         const size_t splitPoint(rand() % (splitPointMax + 1));
 
         for(size_t it{ 0 }; it != splitPoint; it++) {
-          p->chr.sc[it] = parent1->chr.sc[it];
+          p->chr.sc[it] = parent0->chr.sc[it];
         }
         for(size_t it{ splitPoint }; it != NUM_ALLELES; it++) {
-          p->chr.sc[it] = parent2->chr.sc[it];
+          p->chr.sc[it] = parent1->chr.sc[it];
         }
-        p->chr.endSc = parent2->chr.endSc;
+        p->chr.endSc = parent1->chr.endSc;
       }
-      else if(strategy == CrossoverStrategy::MIDPOINT) {
+      else if(strategy == CrossoverStrategy::CONTINUOUS) {
+        float p1Factor{ float(rand()) / float(RAND_MAX) };
+        float p2Factor{ 1 - p1Factor };
         for(size_t it{ 0 }; it != NUM_ALLELES; it++) {
-          p->chr.sc[it].thrust
-            = (parent1->chr.sc[it].thrust + parent2->chr.sc[it].thrust) / 2;
-          p->chr.sc[it].angle
-            = (parent1->chr.sc[it].angle + parent2->chr.sc[it].angle) / 2;
+          p->chr.sc[it].thrust = parent0->chr.sc[it].thrust * p1Factor
+                                 + parent1->chr.sc[it].thrust * p2Factor;
+          p->chr.sc[it].angle = parent0->chr.sc[it].angle * p1Factor //
+                                + parent1->chr.sc[it].angle * p2Factor;
         }
-        p->chr.endSc = max(parent1->chr.endSc, parent2->chr.endSc);
+        p->chr.endSc = max(parent0->chr.endSc, parent1->chr.endSc);
       }
       else if(strategy == CrossoverStrategy::UNIFORM) {
         for(size_t it{ 0 }; it != NUM_ALLELES; it++) {
-          p->chr.sc[it] = (rand() % 2) == 0 ? parent1->chr.sc[it] : parent2->chr.sc[it];
+          p->chr.sc[it] = (rand() % 2) == 0 ? parent0->chr.sc[it] : parent1->chr.sc[it];
         }
-        p->chr.endSc = max(parent1->chr.endSc, parent2->chr.endSc);
+        p->chr.endSc = max(parent0->chr.endSc, parent1->chr.endSc);
       }
     }
   }
 
   enum class MutationStrategy
   {
-    UNIFORM,
-    DIFFERENTIAL,
+    NORMAL,
+    FULL_DIFFERENTIAL
   };
   void populationMutation(vector<Phenotype>::iterator beg,
                           vector<Phenotype>::iterator end,
@@ -332,38 +333,32 @@ public:
   {
     int numMut{ 0 };
     for(auto p{ beg }; p != end; p++) {
-      if(float(rand()) / float(RAND_MAX) > MUTATION_P) {
-        continue;
-      }
-      numMut++;
-
-      size_t targetAllele;
-      int targetValue;
-      targetAllele = rand() % p->chr.endSc;
-      targetValue = rand() % 2;
-
-      int& angle{ p->chr.sc[targetAllele].angle };
-      int& thrust{ p->chr.sc[targetAllele].thrust };
-
-      switch(targetValue) {
-      case 0:
-        switch(strategy) {
-        case MutationStrategy::UNIFORM: angle = rand() % 181 - 90; break;
-        case MutationStrategy::DIFFERENTIAL:
-          angle += rand() % 20;
-          angle -= 2 * min(angle - -180, 0);
-          angle -= 2 * max(angle - 180, 0);
-          break;
+      if(strategy == MutationStrategy::NORMAL) {
+        for(auto sc{ p->chr.sc.begin() }; sc != p->chr.lastCommand(); sc++) {
+          if(float(rand()) / float(RAND_MAX) > MUTATION_P) {
+            continue;
+          }
+          numMut++;
+          int targetValue;
+          targetValue = rand() % 2;
+          int& angle{ sc->angle };
+          int& thrust{ sc->thrust };
+          switch(targetValue) {
+          case 0: angle = rand() % 181 - 90; break;
+          case 1: thrust = rand() % 5; break;
+          }
         }
-
-      case 1:
-        switch(strategy) {
-        case MutationStrategy::UNIFORM: thrust = rand() % 5; break;
-        case MutationStrategy::DIFFERENTIAL:
-          thrust += rand() % 3 - 1;
-          thrust -= 2 * min(thrust - 0, 0);
-          thrust -= 2 * max(thrust - 4, 0);
-          break;
+      }
+      else if(strategy == MutationStrategy::FULL_DIFFERENTIAL) {
+        if(float(rand()) / float(RAND_MAX) > MUTATION_P) {
+          continue;
+        }
+        numMut++;
+        for(auto sc{ p->chr.sc.begin() }; sc != p->chr.lastCommand(); sc++) {
+          sc->angle += rand() % 61 - 30;
+          sc->angle = bounceMinMax(sc->angle, -180, 180);
+          sc->thrust += rand() % 3 - 1;
+          sc->thrust = bounceMinMax(sc->thrust, 0, 4);
         }
       }
     }
@@ -380,7 +375,7 @@ public:
     int thrust{ initialData.power };
     int target_rotate{ pheno.chr.sc[0].angle };
     int rotate{ initialData.rotate };
-    auto step{ pheno.chr.sc.begin() + 1 };
+    auto step{ pheno.chr.sc.begin() };
     const auto stepend{ pheno.chr.sc.end() };
 
     // Stop conditions
@@ -392,7 +387,7 @@ public:
     while(!(hasCollided || hasLeftBoundaries || hasExhaustedFuel)) {
       // Apply changes from phenotype
       t++;
-      if(step != stepend) {
+      if(step != stepend && t % TIME_ALLELE == 0) {
         target_thrust = step->thrust;
         target_rotate = step->angle;
         step++;
@@ -477,7 +472,8 @@ public:
     const vector<P>& land;
     static constexpr float SCALE{ 1000.f / 7000.f };
 
-    bool showOnlySelectedPheno{ false };
+    bool drawGeneration{ true };
+    bool drawParents{ false };
 
     Visualiser(vector<vector<Phenotype>>& population, const vector<P>& land)
         : population(population), land(land)
@@ -500,8 +496,11 @@ public:
 
     void eventCheck()
     {
-      if(IsKeyPressed(KEY_SPACE)) {
-        showOnlySelectedPheno = !showOnlySelectedPheno;
+      if(IsKeyPressed(KEY_Z)) {
+        drawGeneration = !drawGeneration;
+      }
+      if(IsKeyPressed(KEY_X)) {
+        drawParents = !drawParents;
       }
 
       static const int INCREMENT{ 20 };
@@ -549,75 +548,82 @@ public:
         }
       }
     }
+    void drawTrajectory(vector<Result::TrajectoryElem>::const_iterator tebeg,
+                        vector<Result::TrajectoryElem>::const_iterator teend,
+                        const Color& color,
+                        bool simple = false)
+    {
+      for(auto t{ tebeg }; t != teend; t++) {
+        if(!simple)
+          drawRocket(
+            t->position.x * SCALE, t->position.y * SCALE, t->angle, t->thrust, color, 6.f);
+        else
+          drawRocketSimple(
+            t->position.x * SCALE, t->position.y * SCALE, t->angle, t->thrust, color, 6.f);
+      }
+    }
+
+    void drawChromosome(const Chromosome& chr, const Color& color, int x, int y)
+    {
+      for(size_t a{ 0 }; a < NUM_ALLELES; a++) {
+        auto& sc{ chr.sc[a] };
+        Color drawingColor = a <= chr.endSc ? color : BLACK;
+        DrawText(to_string(sc.thrust).c_str(), x + a * 20, y, 15, drawingColor);
+        DrawText(to_string(sc.angle).c_str(), x + a * 20, y + 20, 15, drawingColor);
+      }
+    }
 
     void render()
     {
       BeginDrawing();
-      ClearBackground(WHITE);
+      ClearBackground(GRAY);
 
+      // Draw land
       for(auto it{ land.begin() + 1 }; it != land.end(); it++) {
         auto pit = it - 1;
         DrawLine(pit->x * SCALE, pit->y * SCALE, it->x * SCALE, it->y * SCALE, RED);
       }
-
-      auto beg{ population[gen].begin() };
-      for(auto p{ beg }; p != population[gen].end(); p++) {
-        Color drawingColor;
-        if(p - beg == pheno) {
-          drawingColor = PINK;
-        }
-        else if(showOnlySelectedPheno) {
-          continue;
-        }
-        else if(p - beg < NUM_ELITE) {
-          drawingColor = GREEN;
-        }
-        else {
-          drawingColor = ORANGE;
-        }
-        for(auto& t : p->result.trajectory) {
-          int startPosX = t.position.x * SCALE;
-          int startPosY = t.position.y * SCALE;
-          // P acceleration = { -thrust * sin(rotate / 180.f * 3.15159265f),
-          //                G + thrust * cos(rotate / 180.f / 3.14159265f) };
-          int endPosX
-            = startPosX
-              + SCALE * 10 * (t.thrust + 1) * sin(t.angle / 180.f * 3.14159265f);
-          int endPosY
-            = startPosY - SCALE * 10 * (t.thrust + 1) * cos(t.angle / 180.f * 3.14159265);
-          DrawLine(startPosX, startPosY, endPosX, endPosY, drawingColor);
-        }
-        auto& finalPosition{ (p->result.trajectory.end() - 1)->position };
-        DrawText(to_string(int(p->result.score * 100)).c_str(),
-                 finalPosition.x * SCALE,
-                 finalPosition.y * SCALE,
-                 15,
-                 drawingColor);
-        DrawText(("Pheno: " + to_string(pheno) + " "
-                  + population[gen][pheno].result.scoreString())
-                   .c_str(),
-                 150,
-                 400,
-                 30,
-                 PINK);
-      }
-      int t{ 0 };
-      for(size_t a{ 0 }; a < NUM_ALLELES; a++) {
-        auto& sc{ population[gen][pheno].chr.sc[a] };
-        DrawText(to_string(sc.thrust).c_str(), 150 + a * 20, 450, 15, PINK);
-        DrawText(to_string(sc.angle).c_str(), 150 + a * 20, 470, 15, PINK);
-      }
-      DrawText(("Parent 1: " + to_string(population[gen][pheno].parentNum0)).c_str(),
-               150,
-               500,
-               30,
-               PINK);
-      DrawText(("Parent 2: " + to_string(population[gen][pheno].parentNum1)).c_str(),
-               150,
-               550,
-               30,
-               PINK);
+      // Current generation
       DrawText(("Gen: " + to_string(gen)).c_str(), 30, 400, 30, RED);
+
+      if(drawGeneration) {
+        auto beg{ population[gen].rbegin() };
+        auto end{ population[gen].rend() };
+        for(auto p{ beg }; p != end; p++) {
+          Color drawingColor;
+          auto idx{ &(*p) - &(population[gen][0]) };
+          if(idx < NUM_ELITE) {
+            drawingColor = GREEN;
+          }
+          else {
+            drawingColor = ORANGE;
+          }
+          // Draw ship trajectory
+          drawTrajectory(
+            p->result.trajectory.begin(), p->result.trajectory.end(), drawingColor, true);
+        }
+      }
+
+      auto& selectedPheno{ population[gen][pheno] };
+      // Draw the parents trajectory and chromosome
+      if(drawParents) {
+        for(size_t p{ 0 }; p < 2; p++) {
+          Color drawingColor{ p == 0 ? BLUE : SKYBLUE };
+          if(selectedPheno.parent[p] != nullptr) {
+            auto& t{ selectedPheno.parent[p]->result.trajectory };
+            drawTrajectory(t.begin(), t.end(), drawingColor);
+            drawChromosome(selectedPheno.parent[p]->chr, drawingColor, 150, 500 + 50 * p);
+          }
+        }
+      }
+      // Draw the selected pheno trajectory, chromosome, and score
+      drawTrajectory(selectedPheno.result.trajectory.begin(),
+                     selectedPheno.result.trajectory.end(),
+                     PINK);
+      auto phenoScoreString{ ("Pheno: " + to_string(pheno) + " "
+                              + selectedPheno.result.scoreString()) };
+      DrawText(phenoScoreString.c_str(), 150, 400, 20, PINK);
+      drawChromosome(selectedPheno.chr, PINK, 150, 450);
 
       EndDrawing();
       WaitTime(1.0 / 24.0);
