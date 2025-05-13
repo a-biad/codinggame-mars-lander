@@ -61,12 +61,13 @@ struct InitialData
 class MarsLanderGeneticAlgorithm
 {
   static const int NUM_ALLELES{ 20 };
-  static const int NUM_PHENOTYPES{ 100 };
-  static const int NUM_SELECT{ 50 };
-  static const size_t NUM_ELITE{ 5 };
+  static const int NUM_PHENOTYPES{ 20 };
+  static const int NUM_SELECT{ 10 };
+  static const size_t NUM_ELITE{ 2 };
+  static constexpr float MUTATION_P{ 0.1f };
   static const int SEED{ 4321 };
   // static constexpr float ELITISM_RATE{ 0.2f };
-  static const size_t MAX_EPOCH{ 10000 };
+  static const size_t MAX_EPOCH{ 100000 };
 
   struct ShipControl
   {
@@ -354,11 +355,15 @@ public:
           p->chr.sc[it].angle
             = (parent1->chr.sc[it].angle + parent2->chr.sc[it].angle) / 2;
         }
+        p->chr.endSc = max(parent1->chr.endSc, parent2->chr.endSc);
       }
       else if(strategy == CrossoverStrategy::UNIFORM) {
         for(size_t it{ 0 }; it != NUM_ALLELES; it++) {
           p->chr.sc[it] = (rand() % 2) == 0 ? parent1->chr.sc[it] : parent2->chr.sc[it];
         }
+        p->chr.endSc = max(parent1->chr.endSc, parent2->chr.endSc);
+        sort(
+          p->chr.sc.begin(), p->chr.sc.end(), [](auto& a, auto& b) { return a.t < b.t; });
       }
     }
   }
@@ -370,9 +375,15 @@ public:
   };
   void populationMutation(vector<Phenotype>::iterator beg,
                           vector<Phenotype>::iterator end,
-                          MutationStrategy strategy = MutationStrategy::DIFFERENTIAL)
+                          MutationStrategy strategy)
   {
+    int numMut{ 0 };
     for(auto p{ beg }; p != end; p++) {
+      if(float(rand()) / float(RAND_MAX) > MUTATION_P) {
+        continue;
+      }
+      numMut++;
+
       size_t targetAllele;
       int targetValue;
 
@@ -417,6 +428,7 @@ public:
         }
       }
     }
+    // cerr << "Num mut: " << numMut << "\n";
   }
 
   static void simulate(const InitialData& initialData, Phenotype& pheno)
