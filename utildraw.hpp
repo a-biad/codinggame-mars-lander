@@ -1,9 +1,9 @@
+#include <algorithm>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <raylib.h>
 #include <vector>
-#include <algorithm>
 
 void
 drawRocket(float x, float y, int angle, float power, const Color& color, float scale);
