@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iostream>
+
 #include <boost/program_options.hpp>
 #include <boost/program_options/detail/parsers.hpp>
 #include <boost/program_options/options_description.hpp>
@@ -37,7 +39,7 @@ public:
 
     if(argmap.count("help")) {
       opt.help = true;
-      cout << desc << "\n";
+      std::cout << desc << "\n";
       shouldExit_ = true;
     }
     if(argmap.count("visualize")) {

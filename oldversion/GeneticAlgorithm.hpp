@@ -1,19 +1,23 @@
 #pragma once
 
+#define CODING_GAME 0
+
 #include <algorithm>
+#include <iomanip>
 #include <iostream>
+#include <memory>
 #include <random>
 #include <sstream>
 #include <vector>
 
-#include <raylib.h>
-
-#include <glm/glm.hpp>
-
+#if !CODING_GAME
 #include "utildraw.hpp"
+#include <raylib.h>
+#endif
 
-#include <iomanip>
-#include <memory>
+static constexpr float PIF{
+  3.1415926535897932384626433832795028841971693993751058209749445923078164062f
+};
 
 using std::abs;
 using std::cerr;
@@ -62,8 +66,23 @@ int walkAlgorithm(double b, Random& rand, int v, int vmin = -10000, int vmax = 1
   return walk();
 }
 
-using Pt2f = glm::vec<2, float>;
-// using Pt2i = glm::vec<2, int>;
+struct Pt2f
+{
+  float x;
+  float y;
+};
+inline Pt2f operator+(const Pt2f& a, const Pt2f& b) { return { a.x + b.x, a.y + b.y }; }
+inline Pt2f operator-(const Pt2f& a, const Pt2f& b) { return { a.x - b.x, a.y - b.y }; }
+inline Pt2f operator-(const Pt2f& a) { return { -a.x, -a.y }; }
+inline Pt2f operator*(const Pt2f& a, float b) { return { a.x * b, a.y * b }; }
+inline Pt2f operator*(float a, const Pt2f& b) { return b * a; }
+inline Pt2f operator/(const Pt2f& a, float b) { return { a.x / b, a.y / b }; }
+inline Pt2f& operator+=(Pt2f& a, const Pt2f& b)
+{
+  a.x += b.x;
+  a.y += b.y;
+  return a;
+};
 
 float dist(const Pt2f& vec) { return sqrt(vec.x * vec.x + vec.y * vec.y); }
 
@@ -75,24 +94,6 @@ static constexpr Pt2f BOUNDARIES{ 7000.f, 3000.f };
 bool ccw(const Pt2f& a, const Pt2f& b, const Pt2f& c)
 {
   return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
-}
-
-/**
- * Check if a collision occured
- * p1: Position before a single turn
- * p2: Position after a single turn
- * return: Pointer to the "left" point of the land that was collided with, or nullptr if
- * no collision
- */
-const Pt2f* collision(const Pt2f& p1, const Pt2f p2, const vector<Pt2f>& land)
-{
-  for(size_t i{ 1 }; i < land.size(); i++) {
-    const Pt2f& l1{ land[i - 1] };
-    const Pt2f& l2{ land[i] };
-    if(ccw(p1, l1, l2) != ccw(p2, l1, l2) && ccw(p1, p2, l1) != ccw(p1, p2, l2))
-      return &l1;
-  }
-  return nullptr;
 }
 
 // https://stackoverflow.com/a/565282
@@ -138,16 +139,39 @@ CollisionData checkCollision(const Pt2f& p1, const Pt2f p2, const vector<Pt2f>& 
   return ret;
 }
 
-struct Input
+class ShipControl
 {
+public:
+  int angle;
+  int power;
+
+  ShipControl roundAngle() const { return { int(roundf(angle / 15.f) * 15), power }; }
+
+  Pt2f acceleration() const
+  {
+    return { float(-power * sin(angle / 180.f * PIF)),
+             float(G + power * cos(angle / 180.f * PIF)) };
+  }
+
+  friend ostream& operator<<(ostream& os, const ShipControl& sc)
+  {
+    os << sc.angle << " " << sc.power;
+    return os;
+  }
+};
+
+class Input
+{
+public:
+  int startTime{ 0 };
   vector<Pt2f> land;
   size_t idxLTarget;
   Pt2f targetLeft() const { return land[idxLTarget]; };
   Pt2f targetRight() const { return land[idxLTarget + 1]; };
   Pt2f position;
+  Pt2f velocity{ 0.f, 0.f };
   int fuel;
-  int angle;
-  int power;
+  ShipControl sc;
 };
 
 float
@@ -184,8 +208,8 @@ void projectedDistanceTest(const Input& input)
   bool error{ false };
   float distPrev{ 0.f };
   for(int x{ -600 }; x < BOUNDARIES.x + 600; x += 100) {
-    Pt2f p1{ x, 3000.f };
-    Pt2f p2{ x, -1.f };
+    Pt2f p1{ float(x), 3000.f };
+    Pt2f p2{ float(x), -1.f };
     auto cd{ checkCollision(p1, p2, input.land) };
     if(true || cd.hasCollided) {
       float dist{ projectedDistance(cd, input.land, input.idxLTarget) };
@@ -218,9 +242,10 @@ namespace GA
 
   struct Parameters
   {
+    bool trace{ true };
     int seed{ 1234 };
     size_t numAlleles{ 128 };
-    float weightDist{ 100.f };
+    float weightDist{ 1.f };
     float weightSpeedX{ 1 / 50.f };
     float weightSpeedY{ 1 / 50.f };
     float weightAngle{ 1 / 90.f };
@@ -242,15 +267,23 @@ namespace GA
     bool eAng;
     bool dAng;
     bool dPow;
-  };
 
-  struct ShipControl
-  {
-    int angle;
-    int power;
-    Pt2f acceleration()
+    ShipControl apply(const ShipControl& actual, int t) const
     {
-      return { -power * sin(angle / 180.f * PI), G + power * cos(angle / 180.f * PI) };
+      if(t == 0) {
+        return actual.roundAngle();
+      }
+      ShipControl target;
+      if(eAng) {
+        target.angle = !dAng ? max(actual.angle - 15, -90) //
+                             : min(actual.angle + 15, +90);
+      }
+      else {
+        target.angle = actual.angle;
+      }
+      target.power = !dPow ? max(actual.power - 1, 0) //
+                           : min(actual.power + 1, 4);
+      return target;
     }
   };
 
@@ -320,18 +353,29 @@ namespace GA
     {}
     Chromosome() : m{ { nullptr } } {}
 
+    void generateRandom(Random& rand,
+                        vector<Allele>::iterator albeg,
+                        vector<Allele>::iterator alend)
+    {
+      static std::bernoulli_distribution b{ 0.5 };
+      for(auto& al{ albeg }; al != alend; al++) {
+        al->eAng = b(rand.gen);
+        al->dAng = b(rand.gen);
+        al->dPow = b(rand.gen);
+      }
+    }
+
     void simulate(const Input& input, const Parameters& param)
     {
       if(res.evaluated)
         return;
-      int t{ 0 };
+      int t{ input.startTime };
       Pt2f position{ input.position };
-      Pt2f velocity{ 0, 0 };
+      Pt2f velocity{ input.velocity };
       int fuel{ input.fuel };
-      ShipControl actual{ input.angle, input.power };
+      ShipControl actual{ input.sc };
       // First step: round angle to closest multiple of 15
-      ShipControl target{ int(roundf(actual.angle / 15.f) * 15), input.power };
-      bool firstStep{ true };
+      ShipControl target;
       auto step{ al.begin() };
       const auto stepend{ al.end() };
 
@@ -342,17 +386,9 @@ namespace GA
 
       while(!collisionData.hasCollided && !hasLeftBoundaries && !hasExhaustedFuel) {
         // Apply changes from phenotype
-        t++;
-        if(!firstStep && step != stepend) {
+        target = step->apply(actual, t);
+        if(t != 0)
           step++;
-          if(step->eAng) {
-            target.angle = !step->dAng ? max(target.angle - 15, -90) //
-                                       : min(target.angle + 15, +90);
-          }
-          target.power = !step->dPow ? max(target.power - 1, 0) //
-                                     : min(target.power + 1, 4);
-        }
-        firstStep = false;
         // Power control
         actual.power += min(max(-1, target.power - actual.power), 1);
         actual.power = min(max(0, actual.power), 4);
@@ -365,7 +401,9 @@ namespace GA
         velocity += actual.acceleration();
         position += velocity;
         // Save trajectory
-        res.m.trajectory.push_back({ position, actual });
+        if(param.trace) {
+          res.m.trajectory.push_back({ position, actual });
+        }
         // Check for termination conditions
         collisionData = checkCollision(previousPosistion, position, input.land);
         if(position.x < 0 || position.x > BOUNDARIES.x || position.y < 0
@@ -375,6 +413,7 @@ namespace GA
         if(fuel <= 0) {
           hasExhaustedFuel = true;
         }
+        t++;
       } // Simulation end
 
       if(!collisionData.hasCollided) {
@@ -548,27 +587,24 @@ namespace GA
 
   class Generation
   {
-    std::shared_ptr<const Parameters> params;
     std::shared_ptr<Random> rand;
 
   public:
     Population chr;
     int num;
 
-    Generation(const Generation& g)
-        : chr{ g.chr }, params{ g.params }, rand{ g.rand }, num{ g.num }
-    {}
+    Generation() {}
 
-    Generation(int num,
-               const std::shared_ptr<Parameters>& params,
-               std::shared_ptr<Random>& rand)
-        : num{ num }, params{ params },
-          chr{ params->numPhenotypes, Chromosome(num, -1, *params) }, rand(rand)
+    Generation(const Generation& g) : chr{ g.chr }, rand{ g.rand }, num{ g.num } {}
+
+    Generation(int num, const Parameters& params, std::shared_ptr<Random>& rand)
+        : num{ num }, chr{ params.numPhenotypes, Chromosome(num, -1, params) }, rand(rand)
     {}
 
     void initialize()
     {
       for(auto& c : chr) {
+        c.generateRandom(*rand, c.al.begin(), c.al.end());
         // static std::uniform_int_distribution randangle{ -180, 180 };
         // static std::uniform_int_distribution randpower(0, 4);
         static std::bernoulli_distribution b{ 0.5 };
@@ -579,46 +615,70 @@ namespace GA
         }
       }
       // !! First hint for input 4
-      std::fill(chr[0].al.begin(), chr[0].al.begin() + 7, (Allele){ true, true, true });
-      std::fill(chr[0].al.begin() + 7, chr[0].al.end(), (Allele){ false, true, true });
+      // std::fill(chr[0].al.begin(), chr[0].al.begin() + 7, (Allele){ true, true, true });
+      // std::fill(chr[0].al.begin() + 7, chr[0].al.end(), (Allele){ false, true, true });
     }
 
-    void evaluate(const Input& input)
+    void evaluate(const Input& input, const Parameters& params)
     {
       for(auto& c : chr) {
-        c.simulate(input, *params);
+        c.simulate(input, params);
       }
       sort(chr.begin(), chr.end(), [](const Chromosome& a, const Chromosome& b) {
         return a.res.score > b.res.score;
       });
     }
 
-    void mutate()
+    void mutate(const Parameters& params)
     {
-      for_each(chr.begin() + params->numElite, chr.end(), [&](Chromosome& c) {
-        c = c.mutate(*params, *rand);
+      for_each(chr.begin() + params.numElite, chr.end(), [&](Chromosome& c) {
+        c = c.mutate(params, *rand);
       });
     }
   }; // class Generation
 
-  class GeneticAlgorithm
+  class GeneticAlgorithmTrace
   {
   public:
-    std::shared_ptr<Parameters> param;
-    Input input;
-    std::shared_ptr<Random> rand;
     vector<Generation> generations;
-    vector<Chromosome> best;
+    vector<Chromosome> bests;
+
+    GeneticAlgorithmTrace() {};
+  };
+
+  class GeneticAlgorithm
+  {
+  private:
+    Generation gcurr;
+
+  public:
+    Parameters param;
+    const Input input;
+    std::shared_ptr<Random> rand;
+
+    size_t gen{ 0 };
+    Input inputCurr;
+    int nextAl{ 0 };
+    Chromosome best;
+    bool done{ false };
+
+    std::shared_ptr<GeneticAlgorithmTrace> gatrace;
+
+    ShipControl nextSc()
+    {
+      if(nextAl == best.al.size())
+        return {input.sc};
+      return {best.al[nextAl++].apply(input.sc, input.startTime)};
+    }
 
     GeneticAlgorithm(const Input& input, const Parameters& param = Parameters())
-        : input(input), param(std::make_shared<Parameters>(param)),
-          rand(std::make_shared<Random>())
+        : input(input), param(param), rand(std::make_shared<Random>()), inputCurr(input)
     {
       rand->setSeed(param.seed);
-      generations.reserve(param.genMax);
-      for(int i{ 0 }; i < param.genMax; i++) {
-        generations.push_back(Generation{ i, this->param, this->rand });
+      if(param.trace) {
+        gatrace = std::make_shared<GeneticAlgorithmTrace>();
       }
+      best.res.score = -INFINITY;
     }
 
     void select_and_crossover(const Generation& prev,
@@ -628,70 +688,87 @@ namespace GA
       auto c{ destbeg };
       if(distance(destbeg, destend) % 2 != 0) {
         auto parent1{ tournamentSelection(
-          *param, *rand, prev.chr.cbegin(), prev.chr.cend()) };
+          param, *rand, prev.chr.cbegin(), prev.chr.cend()) };
         auto parent2{ tournamentSelection(
-          *param, *rand, prev.chr.cbegin(), prev.chr.cend()) };
-        crossover(*param, *rand, *parent1, *parent2, &(*c), nullptr);
+          param, *rand, prev.chr.cbegin(), prev.chr.cend()) };
+        crossover(param, *rand, *parent1, *parent2, &(*c), nullptr);
         ++c;
       }
       for(; c < destend; c += 2) {
         auto parent1{ tournamentSelection(
-          *param, *rand, prev.chr.cbegin(), prev.chr.cend()) };
+          param, *rand, prev.chr.cbegin(), prev.chr.cend()) };
         auto parent2{ tournamentSelection(
-          *param, *rand, prev.chr.cbegin(), prev.chr.cend()) };
-        crossover(*param, *rand, *parent1, *parent2, &(*c), &*(c + 1));
+          param, *rand, prev.chr.cbegin(), prev.chr.cend()) };
+        crossover(param, *rand, *parent1, *parent2, &(*c), &*(c + 1));
       }
     }
 
-    void execute()
+    void execute(int geninc = -1)
     {
-      size_t gen{ 0 };
-
-      // Generate random chromosomes
-      generations[gen].initialize();
-      generations[gen].evaluate(input);
-
-      best.push_back(generations[gen].chr[0]);
-      gen++;
-      for(; gen != param->genMax; gen++) {
-        auto& genprev = generations[gen - 1];
-        auto& gencurr = generations[gen];
-
-        // Copy elites and crossover to current generation
-        copy(genprev.chr.begin(),
-             genprev.chr.begin() + param->numElite,
-             gencurr.chr.begin());
-        select_and_crossover(
-          genprev, gencurr.chr.begin() + param->numElite, gencurr.chr.end());
-        gencurr.mutate();
-        gencurr.evaluate(input);
-        if(gencurr.chr[0].res.score > best[best.size() - 1].res.score) {
-          best.push_back(gencurr.chr[0]);
-          cout << "Gen: " << gen << " score: " << gencurr.chr[0].res.score << "\n";
+      size_t genlast{ geninc == -1 ? param.genMax : min(param.genMax, gen + geninc) };
+      for(; gen != genlast && !best.res.hasLanded; gen++) {
+        Generation gnext(gen, param, rand);
+        if(gen == 0) {
+          gnext.initialize();
         }
-        if(gencurr.chr[0].res.hasLanded) {
-          gen++;
-          break;
+        else {
+          // Copy elites and crossover to current generation
+          copy(gcurr.chr.begin(), gcurr.chr.begin() + param.numElite, gnext.chr.begin());
+          select_and_crossover(
+            gcurr, gnext.chr.begin() + param.numElite, gnext.chr.end());
+          gnext.mutate(param);
         }
+
+        gnext.evaluate(inputCurr, param);
+        auto& currbest = gnext.chr[0];
+        bool isNewBest{ gnext.chr[0].res.score > best.res.score };
+        if(isNewBest) {
+          best = gnext.chr[0];
+          cout << "Gen: " << gen << " score: " << best.res.score << "\n";
+        }
+        if(param.trace) {
+          gatrace->generations.push_back(gnext);
+          if(isNewBest)
+            gatrace->bests.push_back(best);
+        }
+        gcurr = std::move(gnext);
       }
-
-      // generations.resize(gen);
-      generations.erase(generations.begin() + gen, generations.end());
-      auto& resultChromosome{ generations[gen - 1].chr[0] };
 
       cout << "-- Best chromosome: \n";
-      cout << resultChromosome << "\n";
-      if(resultChromosome.res.hasLanded) {
+      cout << best << "\n";
+      if(best.res.hasLanded) {
+        done = true;
         cout << "-- Succesful landing\n";
       }
-      else {
+      else if(gen == param.genMax) {
+        done = true;
         cout << "-- Maximum generation reached\n";
       }
-      cout << "Gen: " << gen - 1 << " score: " << resultChromosome.res.score << "\n";
+      else {
+        cout << "-- Waiting for next call ( " << param.genMax - gen
+             << " generations left )\n";
+      }
+      cout << "Gen: " << gen - 1 << " score: " << best.res.score << "\n";
+    } // execute()
+
+    void changeInput(const Input& inputNext)
+    {
+      int dt = inputNext.startTime - inputCurr.startTime;
+      if(dt <= 0)
+        return;
+      inputCurr = inputNext;
+      for(auto& c : gcurr.chr) {
+        c.al.erase(c.al.begin(), c.al.begin() + dt);
+        c.al.resize(param.numAlleles);
+        c.generateRandom(*rand, c.al.end() - dt, c.al.end());
+      }
+      nextAl -= dt;
     }
-  };
+  }; // class GeneticAlgorithm
 
 } // namespace Genetic Algorithm
+
+#if !CODING_GAME
 
 namespace GAVisualizer
 {
@@ -699,23 +776,29 @@ namespace GAVisualizer
 
   class Visualiser
   {
+    const Input* input_;
+    const Parameters* parameters_;
+
   public:
     size_t gen;
     size_t pheno;
-    GeneticAlgorithm* ga;
-    static constexpr float SCALE{ 1366.f / 7000.f };
+    GeneticAlgorithmTrace* ga;
+    static constexpr float SCALE{ 1300.f / 7000.f };
 
     bool drawGeneration{ true };
     bool drawParents{ false };
 
-    Visualiser(GeneticAlgorithm* ga) : ga(ga)
+    Visualiser(GeneticAlgorithmTrace* ga) : ga(ga)
     {
       gen = 0;
       pheno = 0;
       SetTraceLogLevel(LOG_WARNING);
-      InitWindow(1366.f, 700.f,
+      InitWindow(1300.f, 700.f,
                  "Mars lander"); // Initialize window and OpenGL context
     }
+
+    void setInput(const Input* input) { input_ = input; }
+    void setParameters(const Parameters* parameters) { parameters_ = parameters; }
 
     void printCurrentGenInfo()
     {
@@ -775,7 +858,7 @@ namespace GAVisualizer
         }
       }
       if(IsKeyPressedRepeat(KEY_UP) || IsKeyPressed(KEY_UP)) {
-        if(pheno != ga->param->numPhenotypes - 1) {
+        if(pheno != ga->generations[0].chr.size() - 1) {
           pheno++;
         }
       }
@@ -812,7 +895,7 @@ namespace GAVisualizer
       ClearBackground(GRAY);
 
       // Draw land
-      for(auto it{ ga->input.land.begin() + 1 }; it != ga->input.land.end(); it++) {
+      for(auto it{ input_->land.begin() + 1 }; it != input_->land.end(); it++) {
         auto pit = it - 1;
         DrawLine(pit->x * SCALE, pit->y * SCALE, it->x * SCALE, it->y * SCALE, RED);
       }
@@ -825,7 +908,7 @@ namespace GAVisualizer
         for(auto p{ beg }; p != end; p++) {
           Color drawingColor;
           auto idx{ &(*p) - &(ga->generations[gen].chr[0]) };
-          if(idx < ga->param->numElite) {
+          if(idx < parameters_->numElite) {
             drawingColor = GREEN;
           }
           else {
@@ -879,3 +962,5 @@ namespace GAVisualizer
     }
   };
 }
+
+#endif
