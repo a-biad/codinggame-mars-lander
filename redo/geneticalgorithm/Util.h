@@ -2,6 +2,8 @@
 
 #include "Random.h"
 
+#define CGEXPORT 1
+
 namespace geneticalgorithm
 {
   namespace Util

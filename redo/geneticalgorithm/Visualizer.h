@@ -1,12 +1,15 @@
 #pragma once
 
+#include "Util.h"
+
+#if !CGEXPORT
+
+#include <sstream>
 #include <raylib.h>
 
 #include "GeneticAlgorithmTrace.h"
 #include "utildraw.h"
 
-#include <iomanip>
-#include <sstream>
 
 
 namespace geneticalgorithm
@@ -171,3 +174,21 @@ namespace geneticalgorithm
     }
   };
 } // geneticalgorithm
+
+
+#else
+
+#include "GeneticAlgorithmTrace.h"
+
+namespace geneticalgorithm
+{
+  class Visualizer
+  {
+  public:
+    Visualizer(GeneticAlgorithmTrace& gatrace) {}
+
+    void show() {}
+  };
+}
+
+#endif

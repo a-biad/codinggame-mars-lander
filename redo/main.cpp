@@ -54,13 +54,13 @@ run(std::istream& is,
   }
 
   if(parameters.trace) {
-    Visualizer visualizer(gatrace);
+    geneticalgorithm::Visualizer visualizer(gatrace);
     visualizer.show();
   }
 }
 
 void
-runFile(const std::string& inputFileName = std::string("../input/input1.txt"),
+runFile(const std::string& inputFileName,
         const Parameters& parameters,
         const OuterParameters& outerParameters)
 {
@@ -111,7 +111,9 @@ main(int argc, char** argv)
   //
   // runFile(inputFileName, parameters, outer_parameters);
 
-  runCG( defaultParameters() );
+  //runCG( defaultParameters() );
+
+  runFile("../input/input1.txt", defaultParameters(), {100, false});
 
   return 0;
 }
