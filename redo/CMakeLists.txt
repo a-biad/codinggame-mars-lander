@@ -33,3 +33,8 @@ add_executable(redo main.cpp
 )
 
 target_link_libraries(redo PRIVATE raylib)
+
+add_custom_target(export-cg
+        DEPENDS redo export/export.cpp
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMAND python export-cg.py)
