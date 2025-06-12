@@ -51,6 +51,8 @@ run(std::istream& is,
     // Run step of GA
     if(!genetic_algorithm->simulation().isDone()) {
       genetic_algorithm->execute(outerParameters.numGenPerIter);
+    } else {
+      std::cerr << "-- Genetic Algorithm complete" << "\n";
     }
 
     // Output value given by GA

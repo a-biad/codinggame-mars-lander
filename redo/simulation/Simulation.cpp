@@ -39,8 +39,9 @@ namespace simulation
       }
 
       state_.fuel -= state_.sc.power;
+      Pt2f vold {state_.velocity};
       state_.velocity += state_.sc.acceleration();
-      state_.position += state_.velocity;
+      state_.position += (vold + state_.velocity) / 2._f;
 
       collision_ = land_->checkCollision(posprev, state_.position);
       if(collision_.hasCollided)
