@@ -74,6 +74,10 @@ def addFileToOutput(filename):
             # Check if user include or pragma
             elif not (re.match("#(pragma|include [^<])",line) is None):
                 print("Ignoring line: ", filename, ":", line, end='')
+            # Change value of define and add to output
+            elif not(re.match("#define CGEXPORT", line) is None):
+                line2 = line.replace('0','1')
+                out.append(line2)
             # Add to output otherwise
             else:
                out.append(line)

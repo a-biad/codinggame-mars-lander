@@ -2,7 +2,7 @@
 
 #include "Random.h"
 
-#define CGEXPORT 1
+#define CGEXPORT 0
 
 namespace geneticalgorithm
 {
