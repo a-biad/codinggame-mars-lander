@@ -9,11 +9,11 @@
 using namespace simulation;
 
 
-Land::Land() : pts_{ Pt2f{ 0.f, 0.f }, //
-                     Pt2f{ BOUNDARIES.x, 0.f }, //
+Land::Land() : pts_{ Pt2f{ 0._f, 0._f }, //
+                     Pt2f{ BOUNDARIES.x, 0._f }, //
                      Pt2f{ BOUNDARIES }, //
-                     Pt2f{ 0.f, BOUNDARIES.y }, //
-                     Pt2f{ 0.f, 0.f } },
+                     Pt2f{ 0._f, BOUNDARIES.y }, //
+                     Pt2f{ 0._f, 0._f } },
                idxLTarget_(0)
 {
   //
@@ -67,11 +67,11 @@ Land::checkCollision(const Pt2f& p1, const Pt2f& p2) const
     const Pt2f& l1{ land[i - 1] };
     const Pt2f& l2{ land[i] };
     const Pt2f s{ l2 - l1 };
-    float denum{ r.cross(s) };
-    float uNum{ (l1 - p1).cross(r) };
-    float tNum{ (l1 - p1).cross(s) };
+    Float denum{ r.cross(s) };
+    Float uNum{ (l1 - p1).cross(r) };
+    Float tNum{ (l1 - p1).cross(s) };
     if(denum != 0) {
-      float t, u;
+      Float t, u;
       if(0 <= (t = tNum / denum) && t <= 1 //
          && 0 <= (u = uNum / denum) && u <= 1) {
         ret.hasCollided = true;
@@ -133,7 +133,7 @@ Land::projectedDistance(const Pt2f& p) const
     const Pt2f& l1{ land[idxL] };
     const Pt2f& l2{ land[idxL + 1] };
     const Pt2f proj{ p.segmentProjection(l1, l2) };
-    const float d{ p.dist2(proj) };
+    const Float d{ p.dist2(proj) };
     if(d < ans) {
       ans = d;
       coll.idxLIntersection = idxL;

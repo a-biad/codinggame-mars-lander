@@ -30,11 +30,18 @@ add_executable(redo main.cpp
         geneticalgorithm/GeneticAlgorithmTrace.h
         geneticalgorithm/Visualizer.cpp
         geneticalgorithm/Visualizer.h
+        simulation/Float.h
 )
 
 target_link_libraries(redo PRIVATE raylib)
 
-add_custom_target(export-cg
-        DEPENDS redo export/export.cpp
+add_custom_command(
+        OUTPUT ${CMAKE_SOURCE_DIR}/export/export.cpp
+        DEPENDS redo export-cg.py
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMAND python export-cg.py)
+        COMMAND python export-cg.py
+)
+
+add_custom_target(export-cg ALL
+        DEPENDS export/export.cpp
+)

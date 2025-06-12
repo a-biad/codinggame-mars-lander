@@ -10,6 +10,7 @@ excludes = {"geneticalgorithm/Visualizer.h", "geneticalgorithm/Visualizer.cpp", 
 disabledLibraries = {"#include <raylib.h>\n"}
 
 sourceFiles = [
+"simulation/Float.h",
 "simulation/Pt2f.h",
 "simulation/Constants.h",
 "simulation/Collision.h",
