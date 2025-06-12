@@ -12,6 +12,7 @@ struct OuterParameters
 {
   int numGenPerIter{ 100 };
   bool infiniteExecution{ false };
+  bool logSimulatedState{ true };
 };
 
 void
@@ -35,13 +36,22 @@ run(std::istream& is,
         = std::make_unique<
           GeneticAlgorithm>(parameters, Simulation{ land, is }, &gatrace);
     }
-    is.ignore();
+    else {
+      int x;
+      int y;
+      int h_speed; // the horizontal speed (in m/s), can be negative.
+      int v_speed; // the vertical speed (in m/s), can be negative.
+      int fuel; // the quantity of remaining fuel in liters.
+      int rotate; // the rotation angle in degrees (-90 to 90).
+      int power; // the thrust power (0 to 4).
+      is >> x >> y >> h_speed >> v_speed >> fuel >> rotate >> power;
+      is.ignore();
+    }
 
     // Run step of GA
     if(!genetic_algorithm->simulation().isDone()) {
       genetic_algorithm->execute(outerParameters.numGenPerIter);
     }
-    else { genetic_algorithm->flushSimulationWithBest(); }
 
     // Output value given by GA
     if(auto sc{ genetic_algorithm->getSc() }; sc.has_value()) {
@@ -50,6 +60,15 @@ run(std::istream& is,
     else {
       if(outerParameters.infiniteExecution) { std::cout << "0 0" << std::endl; }
       else { break; }
+    }
+
+    if(outerParameters.logSimulatedState) {
+      const auto& s{ genetic_algorithm->simulation() };
+      std::cerr << "Position: " << s.position().x << " " << s.position().y << "\n";
+      std::cerr << "Velocity: " << s.velocity().x << " " << s.velocity().y << "\n";
+      std::cerr << "Fuel: " << s.fuel() << "\n";
+      std::cerr << "SC: " << s.currentSC() << "\n";
+      std::cerr.flush();
     }
   }
 
@@ -79,21 +98,19 @@ runAllFiles(const Parameters& parameters, const OuterParameters& outer_parameter
     "../input/input5.txt"
   };
 
-  for(auto& fileName : fileNames) {
-    runFile(fileName, parameters, outer_parameters);
-  }
+  for(auto& fileName : fileNames) { runFile(fileName, parameters, outer_parameters); }
 }
 
-void runCG(const Parameters& parameters)
+void
+runCG(const Parameters& parameters, const OuterParameters& outer_parameters)
 {
-  Parameters actualParams {parameters};
-  actualParams.trace = false;
+  Parameters actualp{ parameters };
+  actualp.trace = false;
 
-  OuterParameters outer_parameters;
-  outer_parameters.numGenPerIter = 100;
-  outer_parameters.infiniteExecution = true;
+  OuterParameters acutalop{ outer_parameters };
+  acutalop.infiniteExecution = true;
 
-  run(std::cin, actualParams, outer_parameters);
+  run(std::cin, actualp, acutalop);
 }
 
 int
@@ -111,9 +128,18 @@ main(int argc, char** argv)
   //
   // runFile(inputFileName, parameters, outer_parameters);
 
-  //runCG( defaultParameters() );
+  OuterParameters outer_parameters;
+  outer_parameters.numGenPerIter = 16;
+  outer_parameters.infiniteExecution = false;
+  outer_parameters.logSimulatedState = CGEXPORT;
 
-  runFile("../input/input1.txt", defaultParameters(), {100, false});
+  Parameters parameters{ defaultParameters() };
+
+  if(CGEXPORT) {
+    //
+    runCG(parameters, outer_parameters);
+  }
+  else { runAllFiles(parameters, outer_parameters); }
 
   return 0;
 }

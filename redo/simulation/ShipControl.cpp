@@ -14,8 +14,8 @@ using namespace simulation;
 Pt2f
 ShipControl::acceleration() const
 {
-  return { float(-(float)power * std::sinf((float)angle / 180.f * MATH_PI)),
-           float(G + (float)power * std::cosf((float)angle / 180.f * MATH_PI)) };
+  return { float(-(float)power * sinf((float)angle / 180.f * MATH_PI)),
+           float(G + (float)power * cosf((float)angle / 180.f * MATH_PI)) };
 }
 
 std::ostream&

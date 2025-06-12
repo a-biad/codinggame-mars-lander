@@ -11,6 +11,7 @@ namespace simulation
     done_ = false;
     s >> state_.position.x >> state_.position.y >> state_.velocity.x >> state_.velocity.y
       >> state_.fuel >> state_.sc.angle >> state_.sc.power;
+    s.ignore();
   }
 
 
@@ -45,7 +46,9 @@ namespace simulation
   {
     return collision_.hasCollided
            && collision_.idxLIntersection.value() == land_->idxLTarget()
-           && state_.sc.angle == 0 && std::abs(state_.velocity.x) < 20.f
-           && std::abs(state_.velocity.y) < 40.f;
+           && collision_.intersection->x > land_->targetL().x + 25.f
+           && collision_.intersection->x < land_->targetR().x - 25.f
+           && state_.sc.angle == 0 && std::abs(state_.velocity.x) < 18.f
+           && std::abs(state_.velocity.y) < 38.f;
   }
 } // simulation
