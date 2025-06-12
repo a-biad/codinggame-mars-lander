@@ -97,7 +97,9 @@ runAllFiles(const Parameters& parameters, const OuterParameters& outer_parameter
     "../input/input2.txt",
     "../input/input3.txt",
     "../input/input4.txt",
-    "../input/input5.txt"
+    "../input/input5.txt",
+    "../input/input6.txt",
+    "../input/input7.txt",
   };
 
   for(auto& fileName : fileNames) { runFile(fileName, parameters, outer_parameters); }
@@ -131,7 +133,7 @@ main(int argc, char** argv)
   // runFile(inputFileName, parameters, outer_parameters);
 
   OuterParameters outer_parameters;
-  outer_parameters.numGenPerIter = 16;
+  outer_parameters.numGenPerIter = 10;
   outer_parameters.infiniteExecution = false;
   outer_parameters.logSimulatedState = CGEXPORT;
 

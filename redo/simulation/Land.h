@@ -13,6 +13,7 @@ namespace simulation
   {
     std::vector<Pt2f> pts_;
     size_t idxLTarget_;
+    Pt2f targetCenter_;
 
   public:
     Land();
@@ -34,11 +35,14 @@ namespace simulation
 
     float projectedDistance(const Pt2f& p) const;
 
-    Pt2f
+    const Pt2f&
     targetL() const { return pts_[idxLTarget_]; };
 
-    Pt2f
+    const Pt2f&
     targetR() const { return pts_[idxLTarget_ + 1]; };
+
+    const Pt2f&
+    targetCenter() const { return targetCenter_; };
 
     size_t
     idxLTarget() const { return idxLTarget_; };

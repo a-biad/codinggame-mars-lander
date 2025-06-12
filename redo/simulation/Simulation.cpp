@@ -1,9 +1,11 @@
 #include <istream>
 #include <algorithm>
+#include <iostream>
 
 #include "Simulation.h"
 
-#include <iostream>
+#include "Constants.h"
+
 
 namespace simulation
 {
@@ -56,9 +58,9 @@ namespace simulation
   {
     return collision_.hasCollided
            && collision_.idxLIntersection.value() == land_->idxLTarget()
-           && collision_.intersection->x > land_->targetL().x + 25._f
-           && collision_.intersection->x < land_->targetR().x - 25._f
-           && state_.sc.angle == 0 && std::abs(state_.velocity.x) < 18._f
-           && std::abs(state_.velocity.y) < 38._f;
+           && collision_.intersection->x > land_->targetL().x + 10._f
+           && collision_.intersection->x < land_->targetR().x - 10._f
+           && state_.sc.angle == 0 && std::abs(state_.velocity.x) <= LANDING_SPEED_LIMIT.x
+           && std::abs(state_.velocity.y) <= LANDING_SPEED_LIMIT.y;
   }
 } // simulation

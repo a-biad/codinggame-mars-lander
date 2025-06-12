@@ -20,7 +20,7 @@ namespace geneticalgorithm
     Parameters ret;
     ret.trace = true;
     ret.seed = 1234;
-    ret.maxGeneration = 10000;
+    ret.maxGeneration = 30000;
     ret.mutationP = 0.025f;
     ret.selectionK = 10;
     ret.numChromosome = 128;

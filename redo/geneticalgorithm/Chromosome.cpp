@@ -1,6 +1,7 @@
 #include "Chromosome.h"
 
 #include "SimulationPlayer.h"
+#include "../simulation/Constants.h"
 
 namespace geneticalgorithm
 {
@@ -114,14 +115,21 @@ namespace geneticalgorithm
       result_.trace->number.fuelLeft = resultSimu.fuel();
     };
 
-    EndData scoreDetails{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f };
+    EndData scoreDetails = { 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f };
 
     // Distance penalty
-    scoreDetails.projectedDistance = -projectedDistance;
+    if(projectedDistance < 500) {
+      // Decreased penalty if already on target
+      scoreDetails.projectedDistance = -projectedDistance / 100.f;
+    }
+    else { scoreDetails.projectedDistance = -projectedDistance; }
     result_.score += scoreDetails.projectedDistance;
     // Speed penalty
-    scoreDetails.velocity = { -std::abs(resultSimu.velocity().x),
-                              -std::abs(resultSimu.velocity().y) };
+    scoreDetails.velocity = {
+      -std::max(simulation::LANDING_SPEED_LIMIT.x - 5._f,
+                std::abs(resultSimu.velocity().x)),
+      -std::max(simulation::LANDING_SPEED_LIMIT.y - 5._f,
+                std::abs(resultSimu.velocity().y)) };
     result_.score += scoreDetails.velocity.x + scoreDetails.velocity.y;
     // Angle penalty
     scoreDetails.angle = -(std::abs(resultSimu.currentSC().angle) / 90.f);
@@ -130,6 +138,8 @@ namespace geneticalgorithm
     result_.hasLanded = resultSimu.hasLanded();
     if(result_.hasLanded)
       result_.score += 10000.f;
+
+    if(trace) { result_.trace->score = scoreDetails; }
 
     return result_;
   }

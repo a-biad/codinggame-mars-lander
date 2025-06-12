@@ -10,4 +10,5 @@ namespace simulation
 
   static constexpr Float G{ -3.711_f };
   static constexpr Pt2f BOUNDARIES{ 7000._f, 3000._f };
+  static constexpr Pt2f LANDING_SPEED_LIMIT{ 19._f, 39._f };
 }

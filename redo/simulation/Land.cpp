@@ -13,11 +13,7 @@ Land::Land() : pts_{ Pt2f{ 0._f, 0._f }, //
                      Pt2f{ BOUNDARIES.x, 0._f }, //
                      Pt2f{ BOUNDARIES }, //
                      Pt2f{ 0._f, BOUNDARIES.y }, //
-                     Pt2f{ 0._f, 0._f } },
-               idxLTarget_(0)
-{
-  //
-}
+                     Pt2f{ 0._f, 0._f } } { findTarget(); }
 
 void
 Land::fetchFromIstream(std::istream& is)
@@ -49,6 +45,7 @@ Land::findTarget()
     if(land[i].x - land[i - 1].x >= 1000
        && land[i - 1].y == land[i].y) {
       idxLTarget_ = i - 1;
+      targetCenter_ = (targetL() + targetR()) / 2._f;
       return;
     }
   }
@@ -93,8 +90,9 @@ Land::checkCollision(const Pt2f& p1, const Pt2f& p2) const
 float
 Land::projectedDistance(const Collision& c) const
 {
-  if(c.idxLIntersection.value() == this->idxLTarget_)
-    return 0.f;
+  if(c.idxLIntersection.value() == this->idxLTarget_) {
+    return c.intersection->dist(targetCenter_);
+  }
 
   const auto& land{ pts_ };
   float ret{ 0.f };
@@ -115,6 +113,7 @@ Land::projectedDistance(const Collision& c) const
     ret += c.intersection->dist(land[c.idxLIntersection.value()]);
   }
   for(; idxLi != idxLiend; idxLi += dir) { ret += land[idxLi].dist(land[idxLi + 1]); }
+  ret += land[idxLi].dist(targetCenter_);
 
   return ret;
 }
