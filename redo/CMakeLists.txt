@@ -31,9 +31,13 @@ add_executable(redo main.cpp
         geneticalgorithm/Visualizer.cpp
         geneticalgorithm/Visualizer.h
         simulation/Float.h
+        geneticalgorithm/utildraw.cpp
 )
 
 target_link_libraries(redo PRIVATE raylib)
+
+set(CMAKE_CXX_FLAGS "-Wall -Wextra")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 add_custom_command(
         OUTPUT ${CMAKE_SOURCE_DIR}/export/export.cpp

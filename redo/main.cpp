@@ -51,9 +51,8 @@ run(std::istream& is,
     // Run step of GA
     if(!genetic_algorithm->simulation().isDone()) {
       genetic_algorithm->execute(outerParameters.numGenPerIter);
-    } else {
-      std::cerr << "-- Genetic Algorithm complete" << "\n";
     }
+    else { std::cerr << "-- Genetic Algorithm complete" << "\n"; }
 
     // Output value given by GA
     if(auto sc{ genetic_algorithm->getSc() }; sc.has_value()) {
@@ -117,33 +116,38 @@ runCG(const Parameters& parameters, const OuterParameters& outer_parameters)
   run(std::cin, actualp, acutalop);
 }
 
+void
+runFromCommandLine(int argc,
+                   char** argv,
+                   const Parameters& parameters,
+                   const OuterParameters& outer_parameters)
+{
+  if(argc == 1) {
+    runFile("../input/input1.txt", parameters, outer_parameters);
+    return;
+  }
+  for(int i{ 1 }; i < argc; i++) { runFile(argv[i], parameters, outer_parameters); }
+}
+
 int
 main(int argc, char** argv)
 {
-  // std::string inputFileName{ "../input/input1.txt" };
-  // if(argc > 1) { inputFileName = argv[1]; }
-  //
-  // Parameters parameters{ defaultParameters() };
-  // parameters.trace = true;
-  //
-  // OuterParameters outer_parameters;
-  // outer_parameters.numGenPerIter = 100;
-  // outer_parameters.infiniteExecution = false;
-  //
-  // runFile(inputFileName, parameters, outer_parameters);
-
   OuterParameters outer_parameters;
   outer_parameters.numGenPerIter = 10;
   outer_parameters.infiniteExecution = false;
   outer_parameters.logSimulatedState = CGEXPORT;
 
   Parameters parameters{ defaultParameters() };
+  parameters.trace = true;
 
-  if(CGEXPORT) {
+  if constexpr(CGEXPORT) {
     //
     runCG(parameters, outer_parameters);
   }
-  else { runAllFiles(parameters, outer_parameters); }
+  else {
+    //
+    runFromCommandLine(argc, argv, parameters, outer_parameters);
+  }
 
   return 0;
 }

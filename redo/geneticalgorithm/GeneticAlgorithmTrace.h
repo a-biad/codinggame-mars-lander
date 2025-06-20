@@ -9,6 +9,8 @@
 #include "Parameters.h"
 #include "SimulationPlayer.h"
 
+#include <algorithm>
+
 namespace geneticalgorithm
 {
   class GeneticAlgorithmTrace
@@ -34,38 +36,29 @@ namespace geneticalgorithm
     long chrCursor_;
 
   public:
-    GeneticAlgorithmTrace(Parameters const& parameters)
-      : parameters_(parameters), genCursor_(0), chrCursor_(0) {}
+    GeneticAlgorithmTrace(Parameters const& parameters);
 
     /** Add chromosome to the list. Higher score comes first */
     void
-    addChromosome(Chromosome const& chr) { (generations_.end() - 1)->chr.push_back(chr); }
+    addChromosome(Chromosome const& chr);
 
     void
-    addGeneration(simulation::Simulation const& s)
-    {
-      generations_.push_back({ s, {} });
-      (generations_.end() - 1)->chr.reserve(parameters_.numChromosome);
-    }
+    addGeneration(simulation::Simulation const& s);
 
     void
-    changeGeneration(long diff)
-    {
-      genCursor_ += diff;
-      genCursor_ %= (long)generations_.size();
-      if(genCursor_ < 0)
-        genCursor_ += (long)generations_.size();
-      changeChromosome(0);
-    }
+    changeGenerationCursor(long diff, bool loop = true);
 
     void
-    changeChromosome(long diff)
-    {
-      chrCursor_ += diff;
-      chrCursor_ %= (long)generations_[genCursor_].chr.size();
-      if(chrCursor_ < 0)
-        chrCursor_ += (long)generations_[genCursor_].chr.size();
-    }
+    changeChromosomeCursor(long diff, bool loop = false);
+
+    void
+    setGenerationCursor(long genCursor);
+
+    void
+    setChromosomeCursor(long chrCursor);
+
+    auto const&
+    getAllGenerations() const { return generations_; }
 
     const Generation&
     generation() const { return generations_[genCursor_]; }
