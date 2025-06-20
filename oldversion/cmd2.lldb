@@ -1,3 +1,0 @@
-target create a.out
-
-process launch -i input/input1.txt
