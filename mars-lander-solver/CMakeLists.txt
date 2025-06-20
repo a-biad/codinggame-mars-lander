@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.31)
-project(redo)
+project(mars-lander-solver)
 
 set(CMAKE_CXX_STANDARD 17)
 
-add_executable(redo main.cpp
+add_executable(mars-lander-solver main.cpp
         simulation/Pt2f.cpp
         simulation/Pt2f.h
         simulation/Land.cpp
@@ -34,14 +34,14 @@ add_executable(redo main.cpp
         geneticalgorithm/utildraw.cpp
 )
 
-target_link_libraries(redo PRIVATE raylib)
+target_link_libraries(mars-lander-solver PRIVATE raylib)
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 add_custom_command(
         OUTPUT ${CMAKE_SOURCE_DIR}/export/export.cpp
-        DEPENDS redo export-cg.py
+        DEPENDS mars-lander-solver export-cg.py
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMAND python export-cg.py
 )

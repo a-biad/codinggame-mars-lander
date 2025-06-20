@@ -37,7 +37,7 @@ sourceFiles = [
 "geneticalgorithm/GeneticAlgorithmTrace.cpp",
 "geneticalgorithm/SimulationPlayer.cpp",
 "geneticalgorithm/Util.cpp",
-"geneticalgorithm/Visualizer.cpp",
+#"geneticalgorithm/Visualizer.cpp",
 "main.cpp"
 ]
 

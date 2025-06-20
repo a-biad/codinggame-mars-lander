@@ -1,0 +1,5 @@
+.idea
+export
+a.out
+/cmake-build-debug/
+/cmake-build-release/
