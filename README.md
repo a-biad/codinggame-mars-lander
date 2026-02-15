@@ -7,13 +7,14 @@ Depends on [raylib](https://www.raylib.com/)
 
 ```bash
 cd mars-lander-solver
-cmake -B build
+cmake -B build -DCMAKE_BUILD_TYPE=Release # Or '=Debug`
 cmake --build build
 ```
 
 ## Run
 ```bash
 cd mars-lander-solver
-build/mars-lander-solver ../input/input1.txt # Choose of the available input files.
+# Run from the specified input file (the shape of the land, and the initial ship state)
+build/mars-lander-solver -t ../input/input1.txt 
 ```
 
