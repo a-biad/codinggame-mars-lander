@@ -1,9 +1,9 @@
 # codingame-mars-lander
 
-A project to solve the [Mars Lander at codingame.come](https://www.codingame.com/training/medium/mars-lander-episode-2) problem using a genetic algorithm.
+A project to solve the [Mars Lander exercise](https://www.codingame.com/training/medium/mars-lander-episode-2) using a genetic algorithm.
 
 ## Build
-Depends on [raylib](https://www.raylib.com/)
+Depends on Raylib
 
 ```bash
 cd mars-lander-solver
